@@ -87,12 +87,9 @@ fun eval (Num (i), p) = Success ((Val i),p)
         | _ => Error "Attempt to apply with a non-function value"
     end
     (*first attempt to setup the local environment*)
-  | eval (Let (id,exp,inexp), p) = (case eval (inexp,p) of 
+  | eval (Let (id,exp,inexp), p) = (case eval (exp,p) of 
     (*if successful assign to lp, and evaluate the main expression*)
-    Success (_,lp) => (case (eval (exp, lp@p)) of 
-      (*if that is successful, add the pair to the parent environment*)
-      Success (v,_) => Success (v, (id,v)::p) 
-      | Error s => Error s)
+    Success (v,_) => eval (inexp,(id,exp)::p)
     | Error s => Error s)
   (*
    * The let for functions are fairly straight forward, they just copy the
