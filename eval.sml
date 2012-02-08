@@ -1,8 +1,7 @@
 (* Will Coster *)
 
 (*
- * exp is a datatype encapsulating the abstract syntax of the language e
- *)
+ * exp is a datatype encapsulating the abstract syntax of the language e *)
 datatype exp
   = Var of string
   | Num of int
@@ -23,8 +22,8 @@ datatype enval
    * static bound also includes a snapshot of the global environment when it
    * was created
    *)
-  | FSta of string*exp*exp*((string*enval) list)
-  | FDyn of string*exp*exp
+  | FSta of string*exp*((string*enval) list)
+  | FDyn of string*exp
 
 (*
  * a datatype for the return value of the eval function.
@@ -95,15 +94,15 @@ fun eval (Num (i), p) = Success ((Val i),p)
    * The let for functions are fairly straight forward, they just copy the
    * supplied expression and strings into the correct structures.
    *)
-  | eval (LetSta (fid,xid,fexp,pexp), p) = let
-      val f = FSta (xid,fexp,pexp,p)
+  | eval (LetSta (fid,xid,fexp,inexp), p) = let
+      val f = FSta (xid,fexp,p)
     in
-      Success (f,(fid,f)::p)
+      eval (inexp,(fid,f)::p)
     end
-  | eval (LetDyn (fid,xid,fexp,pexp), p) = let
-      val f = FDyn (xid,fexp,pexp)
+  | eval (LetDyn (fid,xid,fexp,inexp), p) = let
+      val f = FDyn (xid,fexp)
     in
-      Success (f,(fid,f)::p)
+      eval (inexp,(fid,f)::p)
     end
 
 (*Pretty print functions for enval*)
@@ -120,12 +119,6 @@ fun evalAndShow (exp,p) = let
     v
   end;
 
-(*evaluate a list of expressions, and print out the value of each expression*)
-fun evalList ([],p) = Error "No expressions given"
-  | evalList ([e],p) = evalAndShow (e,p)
-  | evalList ((e::es),p) = (case evalAndShow (e,p) of
-    Success (v,p) => evalList (es,p)
-    | Error s => Error s);
 
 (*
 
@@ -141,16 +134,3 @@ let a = 42
 d_add(3)
 s_add(3)
 *)
-
-(*
-val example = [ Let("a",Num(47),Num(0)),
-    LetDyn("d_add","x",Plus(Var("x"),Var("b")),Let("b",Var("a"),Num(0))),
-    LetSta("s_add","x",Plus(Var("x"),Var("b")),Let("b",Var("a"),Num(0))),
-    Apply(Var("d_add"),Num(3)),
-    Apply(Var("s_add"),Num(3)),
-    Let("a",Num(42),Num(0)),
-    Apply(Var("d_add"),Num(3)),
-    Apply(Var("s_add"),Num(3)) ];
-evalList (example,[]);
-*)
-
