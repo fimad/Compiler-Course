@@ -32,7 +32,7 @@ datatype enval
  *)
 datatype evalret
   = Error of string
-  | Success of enval*((string*enval) list)
+  | Success of enval
 
 (*
  * lookup searches an environment (Which is a list of string enval*pairs) for a
@@ -42,14 +42,14 @@ datatype evalret
 fun lookup (id,[]) = NONE
   | lookup (id,(pid,pval)::ps) = if id=pid then SOME pval else lookup (id, ps)
 
-fun eval (Num (i), p) = Success ((Val i),p)
+fun eval (Num (i), p) = Success (Val i)
   | eval (Var (x), p) = (case lookup(x, p) of
-    SOME v => Success (v, p)
+    SOME v => Success v
     | NONE => Error (concat ["Variable `",x,"` is not in the environment"]))
   | eval (Plus (a,b), p) = (case ((eval (a,p)),(eval (b,p))) of
       (*if we have proper values, pull out the ints and add them together*)
-      (Success ((Val anum),_), Success ((Val bnum),_)) =>
-          Success ((Val (anum+bnum)),p)
+      (Success (Val anum), Success (Val bnum) =>
+          Success (Val (anum+bnum))
       (*
        * If one of the values evaluates to an error, or if there is a type
        * mismatch, report an error
@@ -66,7 +66,7 @@ fun eval (Num (i), p) = Success ((Val i),p)
        *)
       fun apply (fexp,pexp,p,gp) = (case eval (pexp,p) of
         Success (_,lp) => (case eval (fexp,lp@p) of 
-          Success (v,_) => Success (v,gp)
+          Success v => Success v
           | Error s => Error (concat ["Could not evaluate function: ",s]))
         | Error s => Error (concat ["Could not set up local environment: ",s]))
     in
@@ -87,8 +87,7 @@ fun eval (Num (i), p) = Success ((Val i),p)
     end
     (*first attempt to setup the local environment*)
   | eval (Let (id,exp,inexp), p) = (case eval (exp,p) of 
-    (*if successful assign to lp, and evaluate the main expression*)
-    Success (v,_) => eval (inexp,(id,exp)::p)
+    Success v => eval (inexp,(id,v)::p)
     | Error s => Error s)
   (*
    * The let for functions are fairly straight forward, they just copy the
