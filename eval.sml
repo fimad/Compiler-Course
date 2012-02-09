@@ -1,17 +1,6 @@
 (* Will Coster *)
 
 (*
- * exp is a datatype encapsulating the abstract syntax of the language e *)
-datatype exp
-  = Var of string
-  | Num of int
-  | Plus of exp*exp
-  | Apply of exp*exp
-  | Let of string*exp*exp
-  | LetSta of string*string*exp*exp
-  | LetDyn of string*string*exp*exp
-
-(*
  * env is a datatype that covers the possible values that can be stored in the
  * environment
  *)
@@ -50,6 +39,39 @@ fun eval (Num (i), p) = Success (Val i)
       (*if we have proper values, pull out the ints and add them together*)
       (Success (Val anum), Success (Val bnum)) =>
           Success (Val (anum+bnum))
+      (*
+       * If one of the values evaluates to an error, or if there is a type
+       * mismatch, report an error
+       *)
+      | (Error s,_) => Error s
+      | (_, Error s) => Error s
+      | _ => Error "Type error, plus requires two values.")
+  | eval (Minus (a,b), p) = (case ((eval (a,p)),(eval (b,p))) of
+      (*if we have proper values, pull out the ints and sub them*)
+      (Success (Val anum), Success (Val bnum)) =>
+          Success (Val (anum-bnum))
+      (*
+       * If one of the values evaluates to an error, or if there is a type
+       * mismatch, report an error
+       *)
+      | (Error s,_) => Error s
+      | (_, Error s) => Error s
+      | _ => Error "Type error, plus requires two values.")
+  | eval (Mult (a,b), p) = (case ((eval (a,p)),(eval (b,p))) of
+      (*if we have proper values, pull out the ints and times them together*)
+      (Success (Val anum), Success (Val bnum)) =>
+          Success (Val (anum*bnum))
+      (*
+       * If one of the values evaluates to an error, or if there is a type
+       * mismatch, report an error
+       *)
+      | (Error s,_) => Error s
+      | (_, Error s) => Error s
+      | _ => Error "Type error, plus requires two values.")
+  | eval (Div (a,b), p) = (case ((eval (a,p)),(eval (b,p))) of
+      (*if we have proper values, pull out the ints and div them together*)
+      (Success (Val anum), Success (Val bnum)) =>
+          Success (Val (anum div bnum))
       (*
        * If one of the values evaluates to an error, or if there is a type
        * mismatch, report an error
@@ -100,6 +122,8 @@ fun showValue (Success (Val i)) = print ((Int.toString(i))^"\n")
 fun evalAndShow x = showValue (eval x)
 
 (*
+ Prelexer tests
+(*
 let a = 0 in
 letsta add(x) = x + a in
 let a = 5 in
@@ -112,4 +136,4 @@ val dynamic_test = Let ("a",Num 0,(LetDyn ("add","x",Plus (Var "x", Var "a"),Let
 evalAndShow (static_test,[]);
 (*result should be 10*)
 evalAndShow (dynamic_test,[]);
-
+*)
