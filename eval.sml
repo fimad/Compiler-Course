@@ -48,7 +48,7 @@ fun eval (Num (i), p) = Success (Val i)
     | NONE => Error (concat ["Variable `",x,"` is not in the environment"]))
   | eval (Plus (a,b), p) = (case ((eval (a,p)),(eval (b,p))) of
       (*if we have proper values, pull out the ints and add them together*)
-      (Success (Val anum), Success (Val bnum) =>
+      (Success (Val anum), Success (Val bnum)) =>
           Success (Val (anum+bnum))
       (*
        * If one of the values evaluates to an error, or if there is a type
@@ -57,35 +57,21 @@ fun eval (Num (i), p) = Success (Val i)
       | (Error s,_) => Error s
       | (_, Error s) => Error s
       | _ => Error "Type error, plus requires two values.")
-  | eval (Apply (fexp,exp), p) = let
+  | eval (Apply (fexp,exp), p) = 
+    (*evaluate both sides sides of the apply*)
+    (case (eval (fexp,p),eval (exp,p)) of
       (*
-       * a helper function that Wraps two calls to eval, one to set up the local
-       * environment, the other to execute the function
-       * gp is the environment to return, this stops local variables from
-       * bleeding into the global environment
+       * if the function value is is a statif or dynamic function, pull out
+       * the relevant bits and pass to apply helper
        *)
-      fun apply (fexp,pexp,p,gp) = (case eval (pexp,p) of
-        Success (_,lp) => (case eval (fexp,lp@p) of 
-          Success v => Success v
-          | Error s => Error (concat ["Could not evaluate function: ",s]))
-        | Error s => Error (concat ["Could not set up local environment: ",s]))
-    in
-      (*evaluate both sides sides of the apply*)
-      case (eval (fexp,p),eval (exp,p)) of
-        (*
-         * if the function value is is a statif or dynamic function, pull out
-         * the relevant bits and pass to apply helper
-         *)
-        (Success (FSta (fid,fexp,pexp,fp),_), Success (xval,_)) =>
-            apply (fexp,pexp,(fid,xval)::fp,p)
-        | (Success (FDyn (fid,fexp,pexp),_), Success (xval,_)) =>
-            apply (fexp,pexp,(fid,xval)::p,p)
-        (*Otherwise report the error that occured*)
-        | (Error s,_) => Error s
-        | (_,Error s) => Error s
-        | _ => Error "Attempt to apply with a non-function value"
-    end
-    (*first attempt to setup the local environment*)
+      (Success (FSta (fid,fexp,fp)), Success xval) =>
+          eval (fexp,(fid,xval)::fp)
+      | (Success (FDyn (fid,fexp)), Success xval) =>
+          eval (fexp,(fid,xval)::p)
+      (*Otherwise report the error that occured*)
+      | (Error s,_) => Error s
+      | (_,Error s) => Error s
+      | _ => Error "Attempt to apply with a non-function value")
   | eval (Let (id,exp,inexp), p) = (case eval (exp,p) of 
     Success v => eval (inexp,(id,v)::p)
     | Error s => Error s)
@@ -105,31 +91,25 @@ fun eval (Num (i), p) = Success (Val i)
     end
 
 (*Pretty print functions for enval*)
-fun showValue (Success ((Val i),p)) = print ((Int.toString(i))^"\n")
-  | showValue (Success ((FSta _),p)) = print ("Static function...\n")
-  | showValue (Success ((FDyn _),p)) = print ("Dynamic function...\n")
+fun showValue (Success (Val i)) = print ((Int.toString(i))^"\n")
+  | showValue (Success (FSta _)) = print ("Static function...\n")
+  | showValue (Success (FDyn _)) = print ("Dynamic function...\n")
   | showValue (Error s) = print (s^"\n")
 
 (*evaluate and print an expression*)
-fun evalAndShow (exp,p) = let 
-    val v = eval (exp,p)
-    val _ = showValue (v)
-  in
-    v
-  end;
-
+fun evalAndShow x = showValue (eval x)
 
 (*
+let a = 0 in
+letsta add(x) = x + a in
+let a = 5 in
+add(5)
+ *)
+val static_test = Let ("a",Num 0,(LetSta ("add","x",Plus (Var "x", Var "a"),Let ("a",Num 5, Apply (Var "add", Num 5)))));
+val dynamic_test = Let ("a",Num 0,(LetDyn ("add","x",Plus (Var "x", Var "a"),Let ("a",Num 5, Apply (Var "add", Num 5)))));
 
-The following is an example that uses all of the features of e, and illustrates
-the differences between statically and dynamically bound functions:
+(*result should be 5*)
+evalAndShow (static_test,[]);
+(*result should be 10*)
+evalAndShow (dynamic_test,[]);
 
-let a = 47
-letdyn d_add(x) = x + b in let b = a in 0
-letsta s_add(x) = x + b in let b = a in 0
-d_add(3)
-s_add(3)
-let a = 42
-d_add(3)
-s_add(3)
-*)
