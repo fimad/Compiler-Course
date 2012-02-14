@@ -1,27 +1,6 @@
 (* Will Coster *)
 
-(*
- * env is a datatype that covers the possible values that can be stored in the
- * environment
- *)
-datatype enval
-  = Val of int
-  (* Functions contain a parameter identifier, an expression, and some
-   * expression for setting local environment
-   * static bound also includes a snapshot of the global environment when it
-   * was created
-   *)
-  | FSta of string*exp*((string*enval) list)
-  | FDyn of string*exp
-
-(*
- * a datatype for the return value of the eval function.
- * Eval can either return an error message, or a success of a value and a new
- * environment.
- *)
-datatype evalret
-  = Error of string
-  | Success of enval
+open Ast
 
 (*
  * lookup searches an environment (Which is a list of string enval*pairs) for a
@@ -79,21 +58,27 @@ fun eval (Num (i), p) = Success (Val i)
       | (Error s,_) => Error s
       | (_, Error s) => Error s
       | _ => Error "Type error, plus requires two values.")
-  | eval (Apply (fexp,exp), p) = 
-    (*evaluate both sides sides of the apply*)
-    (case (eval (fexp,p),eval (exp,p)) of
-      (*
-       * if the function value is is a statif or dynamic function, pull out
-       * the relevant bits and pass to apply helper
-       *)
-      (Success (FSta (fid,fexp,fp)), Success xval) =>
-          eval (fexp,(fid,xval)::fp)
-      | (Success (FDyn (fid,fexp)), Success xval) =>
-          eval (fexp,(fid,xval)::p)
-      (*Otherwise report the error that occured*)
-      | (Error s,_) => Error s
-      | (_,Error s) => Error s
-      | _ => Error "Attempt to apply with a non-function value")
+  | eval (Apply (fexp,exps), p) =  let
+      (*zips a list with a constant*)
+      fun rzip [] _ = []
+        | rzip (x::xs) c = (x,c)::(rzip xs c)
+      (*zips ids with evaluated exps*)
+      fun help fids exps = ListPair.zip (fids,(map (fn x => let val (Success v) = eval x in v end) (rzip exps p)))
+    in
+      (*evaluate both sides sides of the apply*)
+      (case (eval (fexp,p)) of
+        (*
+         * if the function value is is a statif or dynamic function, pull out
+         * the relevant bits and pass to apply helper
+         *)
+        (Success (FSta (fids,fexp,fp))) =>
+            eval (fexp,(help fids exps)@fp)
+        | (Success (FDyn (fids,fexp))) =>
+            eval (fexp,(help fids exps)@p)
+        (*Otherwise report the error that occured*)
+        | (Error s) => Error s
+        | _ => Error "Attempt to apply with a non-function value")
+      end
   | eval (Let (id,exp,inexp), p) = (case eval (exp,p) of 
     Success v => eval (inexp,(id,v)::p)
     | Error s => Error s)
@@ -112,14 +97,9 @@ fun eval (Num (i), p) = Success (Val i)
       eval (inexp,(fid,f)::p)
     end
 
-(*Pretty print functions for enval*)
-fun showValue (Success (Val i)) = print ((Int.toString(i))^"\n")
-  | showValue (Success (FSta _)) = print ("Static function...\n")
-  | showValue (Success (FDyn _)) = print ("Dynamic function...\n")
-  | showValue (Error s) = print (s^"\n")
-
-(*evaluate and print an expression*)
+(*evaluate and print an expression
 fun evalAndShow x = showValue (eval x)
+*)
 
 (*
  Prelexer tests

@@ -1,0 +1,48 @@
+structure Ast = Ast
+%%
+
+%name Eval
+
+%header (functor EvalLrValsFun(
+            structure Token : TOKEN
+            structure Ast : AST) 
+        )
+
+%pos int
+%eop EOF
+
+%left MINUS PLUS
+%left MULT DIV
+
+%term ID of string | NUM of int | PLUS | MULT | EOF | DIV | MINUS | LPAREN | RPAREN | EQ | COMMA | IN | LET | LETSTA | LETDYN
+%nonterm LETDEF of Ast.ast | EXP of Ast.ast | START of Ast.ast | PARAMS of string list | EXPLIST of Ast.ast list | TERM of Ast.ast | STATEMENT of Ast.ast
+
+%%
+
+START : STATEMENT EOF             (STATEMENT)
+
+STATEMENT : EXP                   (EXP)
+          | LETDEF                (LETDEF)
+
+EXP : TERM                        (TERM)
+    | EXP PLUS EXP                (Ast.Plus(EXP1,EXP2))
+    | EXP MINUS EXP               (Ast.Minus(EXP1,EXP2))
+    | EXP MULT EXP                (Ast.Mult(EXP1,EXP2))
+    | EXP DIV EXP                 (Ast.Div(EXP1,EXP2))
+
+TERM : LPAREN EXP RPAREN          (EXP)
+     | NUM                        (Ast.Num(NUM))
+     | ID                         (Ast.Var(ID))
+     | ID LPAREN EXPLIST RPAREN   (Ast.Apply(Ast.Var(ID),EXPLIST))
+
+EXPLIST : EXP                     ([EXP])
+        | EXP COMMA EXPLIST       (EXP::EXPLIST)
+
+
+LETDEF : LET ID EQ EXP IN STATEMENT                           (Ast.Let(ID,EXP,STATEMENT))
+       | LETSTA ID LPAREN PARAMS RPAREN EQ EXP IN STATEMENT   (Ast.LetSta(ID,PARAMS,EXP,STATEMENT))
+       | LETDYN ID LPAREN PARAMS RPAREN EQ EXP IN STATEMENT   (Ast.LetDyn(ID,PARAMS,EXP,STATEMENT))
+
+PARAMS : ID                       ([ID])
+       | ID COMMA PARAMS          (ID::PARAMS)
+
