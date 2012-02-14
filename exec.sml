@@ -3,15 +3,6 @@
 (*This file contains the code for the executable*)
 
 fun inputc instrm i = TextIO.inputN(instrm,i);
-(*val lexer = EvalLex.makeLexer (inputc TextIO.stdIn);*)
-(*
-val ast = ((parse lexer) handle ParserError s => let
-    val _ = print (concat ["Parser Error: ",s])
-  in
-    (Num 0)
-  end)
-parseAndRun lexer;
-*)
 
 structure EvalLrVals =
   EvalLrValsFun(
@@ -40,18 +31,3 @@ val (result,lexer) = invoke lexer
 val _ = if debug then showTree 0 result else ()
 val _ = showValue (eval (result,[]))
 
-(*
-fun parse () = let 
-    fun loop lexer = let
-        val (result,lexer) = invoke lexer
-        val (nextToken,lexer) = EvalParser.Stream.get lexer
-      in
-        showValue (eval (result,[]))
-      end
-    val lexer = EvalParser.makeLexer (inputc TextIO.stdIn)
-  in
-    loop lexer
-  end
-
-parse ();
-*)

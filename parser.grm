@@ -15,13 +15,19 @@ structure Ast = Ast
 %left MULT DIV
 
 %term ID of string | NUM of int
-  | PLUS | MULT | DIV | MINUS 
-  | LESS | LESSEQ | MORE | MOREEQ | EQ | NOT
-  | LPAREN | RPAREN | COMMA
-  | IN | LET | LETSTA | LETDYN
-  | IF | THEN | ELSE | END
-  | EOF
-%nonterm LETDEF of Ast.ast | EXP of Ast.ast | START of Ast.ast | PARAMS of string list | EXPLIST of Ast.ast list | TERM of Ast.ast | STATEMENT of Ast.ast
+    | PLUS | MULT | DIV | MINUS 
+    | LESS | LESSEQ | MORE | MOREEQ | EQ | NOT
+    | LPAREN | RPAREN | COMMA
+    | IN | LET | LETSTA | LETDYN
+    | IF | THEN | ELSE | END
+    | EOF
+%nonterm LETDEF of Ast.ast
+       | EXP of Ast.ast
+       | START of Ast.ast
+       | PARAMS of string list
+       | EXPLIST of Ast.ast list
+       | TERM of Ast.ast
+       | STATEMENT of Ast.ast
 
 %%
 

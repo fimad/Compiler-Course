@@ -1,6 +1,6 @@
 /usr/lib/mlton/sml/basis/basis.mlb
 /usr/lib/mlton/sml/mlyacc-lib/mlyacc-lib.mlb
-defs.sml
+ast.sml
 parser.grm.sig
 parser.grm.sml
 lexer.lex.sml

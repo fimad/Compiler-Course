@@ -161,4 +161,4 @@ fun showValue (Ast.Success (Ast.Val i)) = print ((Int.toString(i))^"\n")
   | showValue (Ast.Success (Ast.FDyn _)) = print ("Dynamic function...\n")
   | showValue (Ast.Error s) = print (s^"\n")
 
-val debug = true
+val debug = false
