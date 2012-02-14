@@ -14,7 +14,13 @@ structure Ast = Ast
 %left MINUS PLUS
 %left MULT DIV
 
-%term ID of string | NUM of int | PLUS | MULT | EOF | DIV | MINUS | LPAREN | RPAREN | EQ | COMMA | IN | LET | LETSTA | LETDYN
+%term ID of string | NUM of int
+  | PLUS | MULT | DIV | MINUS 
+  | LESS | LESSEQ | MORE | MOREEQ | EQ | NOT
+  | LPAREN | RPAREN | COMMA
+  | IN | LET | LETSTA | LETDYN
+  | IF | THEN | ELSE | END
+  | EOF
 %nonterm LETDEF of Ast.ast | EXP of Ast.ast | START of Ast.ast | PARAMS of string list | EXPLIST of Ast.ast list | TERM of Ast.ast | STATEMENT of Ast.ast
 
 %%
@@ -25,10 +31,19 @@ STATEMENT : EXP                   (EXP)
           | LETDEF                (LETDEF)
 
 EXP : TERM                        (TERM)
+    (*digit arith*)
     | EXP PLUS EXP                (Ast.Plus(EXP1,EXP2))
     | EXP MINUS EXP               (Ast.Minus(EXP1,EXP2))
     | EXP MULT EXP                (Ast.Mult(EXP1,EXP2))
     | EXP DIV EXP                 (Ast.Div(EXP1,EXP2))
+    (*bool arith*)
+    | NOT EXP                     (Ast.Not(EXP1))
+    | EXP EQ EXP                  (Ast.Eq(EXP1,EXP2))
+    | EXP LESS EXP                (Ast.Less(EXP1,EXP2))
+    | EXP LESSEQ EXP              (Ast.Not(Ast.Less(EXP2,EXP1)))
+    | EXP MORE EXP                (Ast.Less(EXP2,EXP2))
+    | EXP MOREEQ EXP              (Ast.Not(Ast.Less(EXP1,EXP2)))
+    | IF EXP THEN STATEMENT ELSE STATEMENT   (Ast.If(EXP,STATEMENT1,STATEMENT2))
 
 TERM : LPAREN EXP RPAREN          (EXP)
      | NUM                        (Ast.Num(NUM))

@@ -14,6 +14,23 @@ fun eval (Num (i), p) = Success (Val i)
   | eval (Var (x), p) = (case lookup(x, p) of
     SOME v => Success v
     | NONE => Error (concat ["Variable `",x,"` is not in the environment"]))
+  | eval (Eq (a,b), p) = (case ((eval (a,p)),(eval (b,p))) of
+      (Success (Val anum), Success (Val bnum)) =>
+          Success (Val (if anum = bnum then 1 else 0))
+      | (Error s,_) => Error s
+      | (_, Error s) => Error s
+      | _ => Error "Type error, plus requires two values.")
+  | eval (Less (a,b), p) = (case ((eval (a,p)),(eval (b,p))) of
+      (Success (Val anum), Success (Val bnum)) =>
+          Success (Val (if anum < bnum then 1 else 0))
+      | (Error s,_) => Error s
+      | (_, Error s) => Error s
+      | _ => Error "Type error, plus requires two values.")
+  | eval (Not (a), p) = (case (eval (a,p)) of
+      (Success (Val anum)) =>
+          Success (Val (if anum = 0 then 1 else 0))
+      | (Error s) => Error s
+      | _ => Error "Type error, plus requires two values.")
   | eval (Plus (a,b), p) = (case ((eval (a,p)),(eval (b,p))) of
       (*if we have proper values, pull out the ints and add them together*)
       (Success (Val anum), Success (Val bnum)) =>
@@ -79,6 +96,10 @@ fun eval (Num (i), p) = Success (Val i)
         | (Error s) => Error s
         | _ => Error "Attempt to apply with a non-function value")
       end
+  | eval (If (bexp,texp,fexp), p) = (case eval (bexp,p) of 
+    Success (Val 0) => eval (fexp,p)
+    | Success _ => eval (texp,p)
+    | Error s => Error s)
   | eval (Let (id,exp,inexp), p) = (case eval (exp,p) of 
     Success v => eval (inexp,(id,v)::p)
     | Error s => Error s)

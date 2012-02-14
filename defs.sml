@@ -7,11 +7,17 @@ sig
   datatype ast
     = Var of string
     | Num of int
+    (*digit arith*)
     | Plus of ast*ast
     | Minus of ast*ast
     | Div of ast*ast
     | Mult of ast*ast
+    (*boolean arith*)
+    | Not of ast
+    | Eq of ast*ast
+    | Less of ast*ast
     | Apply of ast*(ast list)
+    | If of ast*ast*ast
     | Let of string*ast*ast
     | LetSta of string*(string list)*ast*ast
     | LetDyn of string*(string list)*ast*ast
@@ -48,7 +54,11 @@ struct
     | Minus of ast*ast
     | Div of ast*ast
     | Mult of ast*ast
+    | Not of ast
+    | Eq of ast*ast
+    | Less of ast*ast
     | Apply of ast*(ast list)
+    | If of ast*ast*ast
     | Let of string*ast*ast
     | LetSta of string*(string list)*ast*ast
     | LetDyn of string*(string list)*ast*ast
@@ -79,6 +89,20 @@ and showList i [] = ()
   end
 and showTree x (Ast.Var str) = indent x (concat ["Var(",str,")"])
   | showTree x (Ast.Num i) = indent x (concat ["Num(",Int.toString(i),")"])
+  | showTree x (Ast.Eq (e1,e2)) = let
+      val _ = indent x "Eq"
+      val _ = showTree (x+1) e1
+      val _ = showTree (x+1) e2
+    in () end
+  | showTree x (Ast.Less (e1,e2)) = let
+      val _ = indent x "Less"
+      val _ = showTree (x+1) e1
+      val _ = showTree (x+1) e2
+    in () end
+  | showTree x (Ast.Not (e1)) = let
+      val _ = indent x "Not"
+      val _ = showTree (x+1) e1
+    in () end
   | showTree x (Ast.Plus (e1,e2)) = let
       val _ = indent x "Plus"
       val _ = showTree (x+1) e1
@@ -103,6 +127,13 @@ and showTree x (Ast.Var str) = indent x (concat ["Var(",str,")"])
       val _ = indent x "Apply"
       val _ = showTree (x+1) e1
       val _ = showList (x+1) e2
+    in () end
+  | showTree x (Ast.If (e1,e2,e3)) =  let
+      val _ = indent x "If("
+      val _ = showTree (x+1) e1
+      val _ = indent x ")"
+      val _ = showTree (x+1) e2
+      val _ = showTree (x+1) e3
     in () end
   | showTree x (Ast.Let (str,e1,e2)) =  let
       val _ = indent x (concat ["Let(",str,")"])
