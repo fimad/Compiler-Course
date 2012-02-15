@@ -1,0 +1,5 @@
+let a = 0 in
+letdyn d_add(x,y) = x + a - y in
+letsta s_add(x,y) = x + a - y in
+let a = 5 in
+d_add(5,1)

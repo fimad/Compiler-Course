@@ -19,15 +19,24 @@ structure EvalParser =
     structure Lex = EvalLex)
 
 fun invoke lexstream = let
-    fun print_error (s,i:int,_) =
-      TextIO.output(TextIO.stdOut,"Error, line " ^ (Int.toString i) ^ ", " ^ s ^ "\n")
+    fun print_error (s,i:int,_) = let
+        val _ = TextIO.output(TextIO.stdOut,"Error, line " ^ (Int.toString i) ^ ", " ^ s ^ "\n")
+        val _ =  OS.Process.exit OS.Process.failure (*force quit, o/w mlyacc inf loops*)
+      in () end
   in
-    EvalParser.parse(0,lexstream,print_error,())
+    EvalParser.parse(0, lexstream, print_error, ())
   end
 
+(*parse the input*)
 val lexer = EvalParser.makeLexer (inputc TextIO.stdIn)
-
 val (result,lexer) = invoke lexer
+
+(*find out if we should compile or interpret*)
+val shouldEval = List.foldr (fn (x,b) => (x = "-eval") orelse b) false (CommandLine.arguments ())
+
 val _ = if debug then showTree 0 result else ()
-val _ = showValue (eval (result,[]))
+val _ = if shouldEval then
+          showValue (eval (result,[]))
+        else 
+          showTransValue (translate result)
 

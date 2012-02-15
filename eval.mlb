@@ -5,4 +5,5 @@ parser.grm.sig
 parser.grm.sml
 lexer.lex.sml
 eval.sml
+translate.sml
 exec.sml
