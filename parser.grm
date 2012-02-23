@@ -52,18 +52,18 @@ EXP : TERM                        (TERM)
     | EXP MOREEQ EXP              (Ast.MoreEq(EXP1,EXP2))
     | IF EXP THEN STATEMENT ELSE STATEMENT   (Ast.If(EXP,STATEMENT1,STATEMENT2))
 
-TERM : LPAREN EXP RPAREN          (EXP)
+TERM : ID                         (Ast.Var(ID))
      | NUM                        (Ast.Num(NUM))
-     | ID                         (Ast.Var(ID))
+     | LPAREN EXP RPAREN          (EXP)
      | ID LPAREN EXPLIST RPAREN   (Ast.Apply(Ast.Var(ID),EXPLIST))
 
 EXPLIST : EXP                     ([EXP])
         | EXP COMMA EXPLIST       (EXP::EXPLIST)
 
 
-LETDEF : LET ID EQ EXP IN STATEMENT                           (Ast.Let(ID,EXP,STATEMENT))
-       | LETSTA ID LPAREN PARAMS RPAREN EQ EXP IN STATEMENT   (Ast.LetSta(ID,PARAMS,EXP,STATEMENT))
-       | LETDYN ID LPAREN PARAMS RPAREN EQ EXP IN STATEMENT   (Ast.LetDyn(ID,PARAMS,EXP,STATEMENT))
+LETDEF : LET ID EQ STATEMENT IN STATEMENT                           (Ast.Let(ID,STATEMENT1,STATEMENT2))
+       | LETSTA ID LPAREN PARAMS RPAREN EQ STATEMENT IN STATEMENT   (Ast.LetSta(ID,PARAMS,STATEMENT1,STATEMENT2))
+       | LETDYN ID LPAREN PARAMS RPAREN EQ STATEMENT IN STATEMENT   (Ast.LetDyn(ID,PARAMS,STATEMENT1,STATEMENT2))
 
 PARAMS : ID                       ([ID])
        | ID COMMA PARAMS          (ID::PARAMS)

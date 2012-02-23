@@ -150,7 +150,10 @@ struct
       val (vcode,varg) = evalArg exp
       val (res,code) = translate inexp
     in
-      (res, vcode@[LLVM.Store (LLVM.i32,varg,(LLVM.Variable id))]@code)
+      (res, vcode@[
+          LLVM.Alloca (id,LLVM.i32)
+        , LLVM.Store (LLVM.i32,varg,(LLVM.Variable id))
+      ]@code)
     end
   | translate (LetSta (fid,xids,fexp,inexp)) = let
       fun zipI32 [] = []
