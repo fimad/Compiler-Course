@@ -38,5 +38,10 @@ val _ = if debug then showTree 0 result else ()
 val _ = if shouldEval then
           showValue (eval (result,[]))
         else 
-          showTransValue (translate result)
+          (*showTransValue (translate result)*)
+          let
+            val _ = LLVM_Translate.compile result
+          in
+            print (LLVM.printProgram (LLVM_Translate.getProgram ()))
+          end
 

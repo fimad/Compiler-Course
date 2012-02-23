@@ -13,6 +13,7 @@ structure Ast = Ast
 
 %left MINUS PLUS
 %left MULT DIV
+%left LESS LESSEQ MORE MOREEQ EQ NOT
 
 %term ID of string | NUM of int
     | PLUS | MULT | DIV | MINUS 
