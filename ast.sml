@@ -16,6 +16,9 @@ sig
     | Not of ast
     | Eq of ast*ast
     | Less of ast*ast
+    | LessEq of ast*ast
+    | More of ast*ast
+    | MoreEq of ast*ast
     | Apply of ast*(ast list)
     | If of ast*ast*ast
     | Let of string*ast*ast
@@ -57,6 +60,9 @@ struct
     | Not of ast
     | Eq of ast*ast
     | Less of ast*ast
+    | LessEq of ast*ast
+    | More of ast*ast
+    | MoreEq of ast*ast
     | Apply of ast*(ast list)
     | If of ast*ast*ast
     | Let of string*ast*ast
@@ -96,6 +102,21 @@ and showTree x (Ast.Var str) = indent x (concat ["Var(",str,")"])
     in () end
   | showTree x (Ast.Less (e1,e2)) = let
       val _ = indent x "Less"
+      val _ = showTree (x+1) e1
+      val _ = showTree (x+1) e2
+    in () end
+  | showTree x (Ast.LessEq (e1,e2)) = let
+      val _ = indent x "LessEq"
+      val _ = showTree (x+1) e1
+      val _ = showTree (x+1) e2
+    in () end
+  | showTree x (Ast.More (e1,e2)) = let
+      val _ = indent x "More"
+      val _ = showTree (x+1) e1
+      val _ = showTree (x+1) e2
+    in () end
+  | showTree x (Ast.MoreEq (e1,e2)) = let
+      val _ = indent x "MoreEq"
       val _ = showTree (x+1) e1
       val _ = showTree (x+1) e2
     in () end
