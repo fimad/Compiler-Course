@@ -136,33 +136,30 @@ struct
     end
   | translate (Let (id,exp,inexp)) = let
       val (vcode,varg) = evalArg exp
-      val (code,res) = evalArg inexp
+      val (res,code) = translate inexp
     in
       (res, vcode@[LLVM.Store (LLVM.i32,varg,(LLVM.Variable id))]@code)
     end
   | translate (LetSta (fid,xids,fexp,inexp)) = let
-      val l = makenextlabel ()
+      fun zipI32 [] = []
+        | zipI32 (x::xs) = (x,LLVM.i32)::(zipI32 xs)
+      val (fcode,farg) = evalArg fexp
+      val methodBody = 
+        (*allocate memory for the parameters*)
+        (map (fn x => LLVM.Alloca (x,LLVM.i32)) xids)@
+        (*store the parameters in the allocated memory*)
+        (map (fn x =>
+          LLVM.Store (LLVM.i32,LLVM.Variable(concat ["_",x]),LLVM.Variable(x))
+        ) xids)@
+        (*execute the method body*)
+        fcode@
+        (*add the return statement*)
+        [LLVM.Ret (LLVM.i32, farg)]
+      val _ = addMethod (fid,LLVM.i32,(zipI32 xids),methodBody)
     in
-      test_error ([
-          sayopt1 "jmp" l
-        , saylabel fid ] @
-        (map (sayopt1 "popvar") xids) @ [
-          translate fexp
-        , saylabel l
-        , translate inexp
-      ])
+      translate inexp
     end
-  | translate (LetDyn (fid,xids,fexp,inexp)) = let
-      val l = makenextlabel ()
-    in
-      test_error ([
-          sayopt1 "jmp" l
-        , saylabel fid ] @
-        (map (sayopt1 "popvar") xids) @ [
-          translate fexp
-        , saylabel l
-        , translate inexp
-      ])
-    end
+    (*treat dyn and static the same for now *)
+  | translate (LetDyn (fid,xids,fexp,inexp)) =  translate (LetSta (fid,xids,fexp,inexp))
 
 end
