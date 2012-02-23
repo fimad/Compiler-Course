@@ -4,7 +4,7 @@ ast.sml
 parser.grm.sig
 parser.grm.sml
 lexer.lex.sml
-eval.sml
+(*eval.sml*)
 llvm.sml
 llvm-translate.sml
 (*translate.sml*)

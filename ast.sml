@@ -21,6 +21,8 @@ sig
     | MoreEq of ast*ast
     | Apply of ast*(ast list)
     | If of ast*ast*ast
+    | For of string*ast*ast*ast*ast
+    | Assign of string*ast (*like a let, but assumes the variable is already defined*)
     | Let of string*ast*ast
     | LetSta of string*(string list)*ast*ast
     | LetDyn of string*(string list)*ast*ast
@@ -65,6 +67,8 @@ struct
     | MoreEq of ast*ast
     | Apply of ast*(ast list)
     | If of ast*ast*ast
+    | For of string*ast*ast*ast*ast
+    | Assign of string*ast (*like a let, but assumes the variable is already defined*)
     | Let of string*ast*ast
     | LetSta of string*(string list)*ast*ast
     | LetDyn of string*(string list)*ast*ast

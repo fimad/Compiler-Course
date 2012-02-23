@@ -31,6 +31,7 @@ fun invoke lexstream = let
 val lexer = EvalParser.makeLexer (inputc TextIO.stdIn)
 val (result,lexer) = invoke lexer
 
+(*
 (*find out if we should compile or interpret*)
 val shouldEval = List.foldr (fn (x,b) => (x = "-eval") orelse b) false (CommandLine.arguments ())
 
@@ -44,4 +45,8 @@ val _ = if shouldEval then
           in
             print (LLVM.printProgram (LLVM_Translate.getProgram ()))
           end
+          *)
+
+val _ = LLVM_Translate.compile result 
+val _ = print (LLVM.printProgram (LLVM_Translate.getProgram ()))
 

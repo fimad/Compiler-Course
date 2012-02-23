@@ -1,0 +1,8 @@
+letdyn factorial(max) =
+  let prod = 1 in
+  let i = max in
+  for i to 0 by ~1 do
+    prod := prod * i
+  in prod
+in
+  factorial(10)

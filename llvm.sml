@@ -43,7 +43,10 @@ struct
     | printType i1 = "i1"
     | printType notype = ""
 
-  fun printArg (Num i) = Int.toString i
+  fun printArg (Num i) = 
+    (*sml formats negative numbers with a ~ instead of a -*)
+      if( i >= 0 ) then Int.toString i
+      else (concat ["-",(Int.toString (0-i))])
     | printArg (Variable v) = concat ["%",v]
     | printArg (Label v) = concat ["label %",v]
 

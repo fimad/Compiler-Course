@@ -11,16 +11,18 @@ structure Ast = Ast
 %pos int
 %eop EOF
 
+%left NEG
 %left MINUS PLUS
 %left MULT DIV
 %left LESS LESSEQ MORE MOREEQ EQ NOT
 
-%term ID of string | NUM of int
+%term ID of string | NUM of int | NEG | ASSIGN
     | PLUS | MULT | DIV | MINUS 
     | LESS | LESSEQ | MORE | MOREEQ | EQ | NOT
     | LPAREN | RPAREN | COMMA
     | IN | LET | LETSTA | LETDYN
     | IF | THEN | ELSE | END
+    | FOR | TO | BY | DO
     | EOF
 %nonterm LETDEF of Ast.ast
        | EXP of Ast.ast
@@ -50,9 +52,12 @@ EXP : TERM                        (TERM)
     | EXP LESSEQ EXP              (Ast.LessEq(EXP1,EXP2))
     | EXP MORE EXP                (Ast.More(EXP1,EXP2))
     | EXP MOREEQ EXP              (Ast.MoreEq(EXP1,EXP2))
+    | ID ASSIGN EXP               (Ast.Assign(ID,EXP))
     | IF EXP THEN STATEMENT ELSE STATEMENT   (Ast.If(EXP,STATEMENT1,STATEMENT2))
+    | FOR ID TO EXP BY EXP DO STATEMENT IN STATEMENT   (Ast.For(ID,EXP1,EXP2,STATEMENT1,STATEMENT2))
 
 TERM : ID                         (Ast.Var(ID))
+     | NEG NUM                    (Ast.Num(0-NUM))
      | NUM                        (Ast.Num(NUM))
      | LPAREN EXP RPAREN          (EXP)
      | ID LPAREN EXPLIST RPAREN   (Ast.Apply(Ast.Var(ID),EXPLIST))

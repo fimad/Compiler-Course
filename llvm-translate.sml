@@ -45,76 +45,76 @@ struct
     in
       (l,code)
     end
-  | translate (Eq (a,b)) = let
+  | translate (Ast.Eq (a,b)) = let
       val (code1,arg1) = evalArg a
       val (code2,arg2) = evalArg b
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.CmpEq (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Less (a,b)) = let
+  | translate (Ast.Less (a,b)) = let
       val (code1,arg1) = evalArg a
       val (code2,arg2) = evalArg b
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.CmpLt (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (LessEq (a,b)) = let
+  | translate (Ast.LessEq (a,b)) = let
       val (code1,arg1) = evalArg a
       val (code2,arg2) = evalArg b
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.CmpLe (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (More (a,b)) = let
+  | translate (Ast.More (a,b)) = let
       val (code1,arg1) = evalArg a
       val (code2,arg2) = evalArg b
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.CmpGt (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (MoreEq (a,b)) = let
+  | translate (Ast.MoreEq (a,b)) = let
       val (code1,arg1) = evalArg a
       val (code2,arg2) = evalArg b
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.CmpGe (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Not (a)) = let
+  | translate (Ast.Not (a)) = let
       val (code1,arg1) = evalArg a
       val l = makenextvar ()
     in
       (l,code1@[LLVM.Xor (l,LLVM.i1,(LLVM.Num 1),arg1)])
     end
-  | translate (Plus (a,b)) = let
+  | translate (Ast.Plus (a,b)) = let
       val (code1,arg1) = evalArg a
       val (code2,arg2) = evalArg b
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.Add (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Minus (a,b)) = let
+  | translate (Ast.Minus (a,b)) = let
       val (code1,arg1) = evalArg a
       val (code2,arg2) = evalArg b
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.Sub (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Mult (a,b)) = let
+  | translate (Ast.Mult (a,b)) = let
       val (code1,arg1) = evalArg a
       val (code2,arg2) = evalArg b
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.Mul (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Div (a,b)) = let
+  | translate (Ast.Div (a,b)) = let
       val (code1,arg1) = evalArg a
       val (code2,arg2) = evalArg b
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.Div (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Apply ((Var v),exps)) =  let
+  | translate (Ast.Apply ((Ast.Var v),exps)) =  let
       val argsAndCodes = map evalArg exps
       val code = (foldr (op @) [] (map (#1) argsAndCodes))
       val args = (map (#2) argsAndCodes)
@@ -122,8 +122,39 @@ struct
     in
       (l,code@[LLVM.Call (l,LLVM.i32,v,args)])
     end
-  | translate (Apply _) =  raise (TranslationError "Can only apply on variables")
-  | translate (If (bexp,texp,fexp)) = let
+  | translate (Ast.Apply _) =  raise (TranslationError "Can only apply on variables")
+  | translate (Ast.For (id,toexp,byexp,doexp,inexp)) = let
+      val cnd_label = makenextlabel ()
+      val update_label = makenextlabel ()
+      val loop_start_label = makenextlabel ()
+      val loop_end_label = makenextlabel ()
+      val (by_code,by_res) = evalArg byexp
+      val (to_code,to_res) = evalArg toexp
+      val (do_code,do_res) = evalArg doexp
+      val (in_res,in_code) = translate inexp
+      val id_var = makenextvar ()
+      val id_cmp_var = makenextvar ()
+      val add_var = makenextvar ()
+      val cmp_var = makenextvar ()
+    in
+      (in_res, to_code@by_code@[
+          LLVM.Br(LLVM.Label(cnd_label))
+        , LLVM.DefnLabel(update_label)
+        , LLVM.Load(id_var,LLVM.pi32,LLVM.Variable(id))
+        , LLVM.Add(add_var,LLVM.i32,LLVM.Variable(id_var),by_res)
+        , LLVM.Store(LLVM.i32,LLVM.Variable(add_var),LLVM.Variable(id))
+        , LLVM.Br(LLVM.Label(cnd_label))
+        , LLVM.DefnLabel(cnd_label)
+        , LLVM.Load(id_cmp_var,LLVM.pi32,LLVM.Variable(id))
+        , LLVM.CmpNe(cmp_var,LLVM.i32,LLVM.Variable(id_cmp_var),to_res)
+        , LLVM.CndBr(LLVM.Variable(cmp_var),LLVM.Label(loop_start_label),LLVM.Label(loop_end_label))
+        , LLVM.DefnLabel(loop_start_label)
+       ]@do_code@[
+          LLVM.Br(LLVM.Label(update_label))
+        , LLVM.DefnLabel(loop_end_label)
+       ]@in_code)
+    end
+  | translate (Ast.If (bexp,texp,fexp)) = let
       val [l1,l2,l3] = map makenextlabel [(),(),()]
       val [l4,l5] = map makenextvar [(),()]
       val (bcode,bres) = evalArg bexp
@@ -146,7 +177,16 @@ struct
         , LLVM.Load (l5,LLVM.pi32,(LLVM.Variable l4))
       ])
     end
-  | translate (Let (id,exp,inexp)) = let
+  | translate (Ast.Assign (id,exp)) = let
+      val (vcode,varg) = evalArg exp
+      val l = makenextvar ()
+    in
+      (l, vcode@[
+          LLVM.Store (LLVM.i32,varg,(LLVM.Variable id))
+        , LLVM.Load (l,LLVM.pi32,(LLVM.Variable id))
+      ])
+    end
+  | translate (Ast.Let (id,exp,inexp)) = let
       val (vcode,varg) = evalArg exp
       val (res,code) = translate inexp
     in
@@ -155,7 +195,7 @@ struct
         , LLVM.Store (LLVM.i32,varg,(LLVM.Variable id))
       ]@code)
     end
-  | translate (LetSta (fid,xids,fexp,inexp)) = let
+  | translate (Ast.LetSta (fid,xids,fexp,inexp)) = let
       fun zipI32 [] = []
         | zipI32 (x::xs) = (x,LLVM.i32)::(zipI32 xs)
       val (fcode,farg) = evalArg fexp
@@ -175,7 +215,7 @@ struct
       translate inexp
     end
     (*treat dyn and static the same for now *)
-  | translate (LetDyn (fid,xids,fexp,inexp)) =  translate (LetSta (fid,xids,fexp,inexp))
+  | translate (Ast.LetDyn (fid,xids,fexp,inexp)) =  translate (Ast.LetSta (fid,xids,fexp,inexp))
 
   fun compile ast = let
     val (mainBody,vres) = evalArg ast
