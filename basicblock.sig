@@ -1,9 +1,9 @@
 signature BASICBLOCK =
 sig
+  (*.*)
 
   type BasicBlock
   type BasicBlockGraph
-
   val label : BasicBlock -> string
   val code : BasicBlock -> LLVM.OP list
   val succ : BasicBlockGraph -> BasicBlock -> BasicBlock list
@@ -11,6 +11,9 @@ sig
 
   val def : BasicBlock -> string list
   val use : BasicBlock -> string list
+
+  val vars_in : BasicBlockGraph -> BasicBlock -> string list
+  val vars_out : BasicBlockGraph -> BasicBlock -> string list
 
   val createBBGraph : LLVM.OP list -> BasicBlockGraph
   val createBBList : BasicBlockGraph -> BasicBlock list

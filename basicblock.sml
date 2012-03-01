@@ -77,6 +77,15 @@ struct
       List.concat (map op2use (code bb))
     end
 
+  (*subtracts the contents of list b from list a*)
+  fun list_diff a [] = a
+    | list_diff a (b::bs) = list_diff (List.filter (fn x => b <> x) a) bs
+
+  fun list_union a b = a@b
+
+  fun vars_in graph bb = list_union (use bb) (list_diff (vars_out graph bb) (def bb))
+  and vars_out graph bb = List.concat (map (vars_in graph) (succ graph bb))
+
   (* converts a sequence of op codes into a list of basic blocks *)
   fun ops2bblist block [] = [block]
     | ops2bblist block (code::rest) = (case code of
