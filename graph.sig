@@ -10,7 +10,10 @@ sig
     val eq: node*node -> bool
 
     val newGraph: unit -> graph
+    val newGraphOfSize: int -> graph
     val newNode : graph -> node
+    val toNode : graph*int -> node
+    val toInt : node -> int
     exception GraphEdge
     val mk_edge: {from: node, to: node} -> unit
     val rm_edge: {from: node, to: node} -> unit

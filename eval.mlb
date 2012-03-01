@@ -12,6 +12,7 @@ table.sig
 table.sml
 graph.sig
 graph.sml
-optimize.sml
+basicblock.sig
+basicblock.sml
 (*translate.sml*)
 exec.sml

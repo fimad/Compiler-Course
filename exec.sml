@@ -48,5 +48,10 @@ val _ = if shouldEval then
           *)
 
 val _ = LLVM_Translate.compile result 
-val _ = print (LLVM.printProgram (LLVM_Translate.getProgram ()))
+val program = LLVM_Translate.getProgram ()
+fun method2dot (title,_,_,code) = BB.toDot title (BB.createBBGraph code)
+val _ = print (concat (map method2dot program))
+
+(*val _= print (BB.makeDot (BB.labelBlocks (LLVM_Translate.getProgram ())))*)
+(*val _ = print (LLVM.printProgram (LLVM_Translate.getProgram ()))*)
 

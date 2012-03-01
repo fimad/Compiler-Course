@@ -28,6 +28,7 @@ struct
   fun augment (g: graph) (n: node') : node = (g,n)
 
   fun newGraph() = A.array(0,bogusNode)
+  fun newGraphOfSize x = A.array(x,emptyNode)
 
   fun nodes g = let val b = A.bound g
                     fun f i = if isBogus( A.sub(g,i)) then nil
@@ -53,6 +54,9 @@ struct
                  end
      in look(0, 1 + A.bound g)
     end
+    
+  fun toNode (graph,i) = (graph,i)
+  fun toInt (graph,i) = i
 
   exception GraphEdge
   fun check(g,g') = (* if g=g' then () else raise GraphEdge *) ()
