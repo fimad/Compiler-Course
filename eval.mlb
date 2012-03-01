@@ -1,5 +1,6 @@
 /usr/lib/mlton/sml/basis/basis.mlb
 /usr/lib/mlton/sml/mlyacc-lib/mlyacc-lib.mlb
+/usr/lib/mlton/sml/smlnj-lib/Util/smlnj-lib.mlb
 ast.sml
 parser.grm.sig
 parser.grm.sml
@@ -7,5 +8,10 @@ lexer.lex.sml
 (*eval.sml*)
 llvm.sml
 llvm-translate.sml
+table.sig
+table.sml
+graph.sig
+graph.sml
+optimize.sml
 (*translate.sml*)
 exec.sml
