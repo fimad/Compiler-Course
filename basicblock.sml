@@ -92,7 +92,7 @@ struct
         LLVM.Ret _ => [block@[code]]@(ops2bblist [] rest)
       | LLVM.Br _ => [block@[code]]@(ops2bblist [] rest)
       | LLVM.CndBr _ => [block@[code]]@(ops2bblist [] rest)
-(*      | LLVM.Call _ => [block@[code]]@(ops2bblist [] rest)*)
+      | LLVM.Call _ => [block@[code]]@(ops2bblist [] rest)
       | _ => ops2bblist (block@[code]) rest)
   val ops2bblist = ops2bblist []
 
@@ -109,12 +109,13 @@ struct
         | lookup s ((Label (s',i),bb)::bbs) = if s = s' then i else lookup s bbs
         | lookup s (_::bbs) = lookup s bbs 
 
-      fun succ [] = []
-        | succ (code::rest) = (case code of
-            LLVM.Ret (_,(LLVM.Label label)) => (lookup label bbs)::(succ rest)
-          | LLVM.Br (LLVM.Label label) => (lookup label bbs)::(succ rest)
-          | LLVM.CndBr (_,LLVM.Label l1,LLVM.Label l2) => (lookup l1 bbs)::((lookup l2 bbs)::(succ rest))
-          | _ => succ rest)
+      fun succ id [] = []
+        | succ id (code::rest) = (case code of
+            LLVM.Ret (_,(LLVM.Label label)) => (lookup label bbs)::(succ id rest)
+          | LLVM.Br (LLVM.Label label) => (lookup label bbs)::(succ id rest)
+          | LLVM.CndBr (_,LLVM.Label l1,LLVM.Label l2) => (lookup l1 bbs)::((lookup l2 bbs)::(succ id rest))
+          | LLVM.Call _ => (id+1)::(succ id rest)
+          | _ => succ id rest)
 
        fun makeEdges graph [] = []
          | makeEdges graph (bb::bbs) = let
@@ -122,7 +123,7 @@ struct
             val id = (case bb of
                 (Label (_,i),_) => i
               | (NoLabel i,_) => i)
-            val succs = succ code
+            val succs = succ id code
             val _ = map (fn j => Graph.mk_edge {from=Graph.toNode(graph,id), to=Graph.toNode(graph,j)}) succs
           in makeEdges graph bbs end
 

@@ -21,6 +21,7 @@ sig
   val toDot : string -> BasicBlockGraph -> string
 
   exception NoSuchBlock
+  exception BadLabel
 
 end
 
