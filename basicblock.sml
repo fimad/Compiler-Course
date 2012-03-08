@@ -99,10 +99,12 @@ struct
     fun vars_in graph bb = list_union (use bb) (list_diff (vars_out graph bb) (def bb))
     and vars_out graph bb = List.concat (map (vars_in graph) (succ graph bb))
   *)
-  structure SetT = RedBlackSetFn (struct
+  (* String*OP set
+  structure SOPSet = RedBlackSetFn (struct
       type ord_key = string
       val compare = String.compare
     end)
+  *)
 
   structure BBMap = RedBlackMapFn (struct
       type ord_key = BasicBlock
@@ -116,6 +118,29 @@ struct
   fun bbdiff a b = BBMap.filter (fn x => case BBMap.find (b,x) of
         SOME _ => false
       | NONE => true ) a
+  fun map_lookup m key = (case BBMap.find (m,key) of
+        NONE => []
+      | SOME v => v)
+(*
+vars_out graph bb = List.concat (map (vars_in graph) (succ graph bb))
+*)
+
+  fun in_out last_in last_out graph = let
+      val (bbgraph,bbs) = graph (*decompose graph*)
+      val new_in = foldl (fn (bb,m) =>
+          BBMap.insert (
+            m,
+            bb,
+            (list_union (use bb) (list_diff (map_lookup m bb) (def bb)))
+          )
+        ) BBMap.empty bbs
+      val new_out = foldl (fn (bb,m) =>
+        ) BBMap.empty bbs
+    in
+      if (map_equal last_in new_in) andalso (map_equal last_out new_out) then (new_in,new_out)
+      else in_out new_in new_out graph
+    end
+  val in_out = in_out BBMap.empty BBMap.empty
 
   (*
   fun in_out last_in last_out graph = let
