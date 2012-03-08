@@ -5,7 +5,6 @@ ast.sml
 parser.grm.sig
 parser.grm.sml
 lexer.lex.sml
-(*eval.sml*)
 llvm.sml
 llvm-translate.sml
 table.sig
@@ -14,5 +13,6 @@ graph.sig
 graph.sml
 basicblock.sig
 basicblock.sml
-(*translate.sml*)
+optimize.sig
+optimize.sml
 exec.sml

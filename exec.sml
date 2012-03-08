@@ -46,11 +46,22 @@ val _ = if shouldEval then
             print (LLVM.printProgram (LLVM_Translate.getProgram ()))
           end
           *)
+fun shouldArg arg = List.foldr (fn (x,b) => (x = arg) orelse b) false (CommandLine.arguments ())
+val shouldO1 = shouldArg "-O1"
+val shouldO2 = shouldArg "-O2"
+val optimizeLevel =
+  if shouldArg "-O2" then 2 else
+  if shouldArg "-O1" then 1 else
+  0;
+val shouldDot = shouldArg "-dot"
 
 val _ = LLVM_Translate.compile result 
 val program = LLVM_Translate.getProgram ()
-fun method2dot (title,_,_,code) = BB.toDot title (BB.createBBGraph code)
-val _ = print (concat (map method2dot program))
+fun optimizeMethod (name,ty,args,code) = (name,ty,args,((BB.graph2code o (Optimize.optimize optimizeLevel) o BB.createBBGraph) code))
+fun method2dot (title,_,_,code) = BB.toDot title (Optimize.optimize optimizeLevel (BB.createBBGraph code))
+val _ = if shouldDot
+  then print (concat (map method2dot program))
+  else print (LLVM.printProgram (map optimizeMethod program))
 
 (*val _= print (BB.makeDot (BB.labelBlocks (LLVM_Translate.getProgram ())))*)
 (*val _ = print (LLVM.printProgram (LLVM_Translate.getProgram ()))*)

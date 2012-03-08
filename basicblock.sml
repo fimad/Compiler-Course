@@ -15,17 +15,24 @@ struct
   type BasicBlock = Annotation*BasicBlock'
   type BasicBlockGraph = Graph.graph*(BasicBlock list)
 
+  
+  (**********************************
+   * LIST AND MAP UTILITY FUNCTIONS *
+   **********************************)
 
   (* functions for treating lists like sets *)
   (* for each element in xs, filter the remaining list *)
   (* non order preserving *)
   fun list_uniqify xs = foldl (fn (x,xs) => x::(List.filter (fn y => x<>y) xs) ) xs xs
+
   (*subtracts the contents of list b from list a*)
   fun list_diff equals a [] = a
     | list_diff equals a (b::bs) = list_diff equals (List.filter (fn x => not (equals (b,x))) a) bs
   fun list_diff' e a b = list_uniqify (list_diff e a b)
-  val list_diff = (list_diff (op =)) o list_uniqify 
+  val list_diff = (fn a => fn b => list_uniqify (list_diff (op =) a b))
+
   fun list_union a b = list_uniqify (a@b)
+
   (*returns true if two lists are set-wise equal*)
   fun list_equal [] [] = true
     | list_equal [] _ = false
@@ -45,18 +52,53 @@ struct
   fun map_equal m1 m2 = let
     fun oneway m1 m2 = BBMap.foldli (fn (k,v,b) => if list_equal (map_lookup m2 k) v then b else false) true m1
     in oneway m1 m2 andalso oneway m2 m1 end
+  fun map_contains m bb = if BBMap.find (m,bb) = NONE then false else true
+  fun map_insert m bb v = BBMap.insert (m,bb,v)
+
+  fun graph_equal (_,bbs_1) (_,bbs_2) = list_equal bbs_1 bbs_2
+
+  
+  (**********************************
+   *  BASIC BLOCK UTILITY FUNCTIONS *
+   **********************************)
 
 (* functions for getting relevant info out of a basic block *)
   exception NoSuchBlock
-
   fun id2bb (graph,[]) id = raise NoSuchBlock
     | id2bb (graph,((label,bb)::bs)) id = if label2int label = id then (label,bb) else id2bb (graph,bs) id
+  fun bb2id (label,code) = label2int label
 
   fun code (_,code) = code
+  fun set_code (label,_) code = (label,code)
   fun label (label,_) = concat ["BB",Int.toString(label2int label)]
   fun succ (graph,bbs) (label,_) = map (fn x => (id2bb (graph,bbs) (Graph.toInt x))) (Graph.succ (Graph.toNode (graph,label2int label)))
   fun pred (graph,bbs) (label,_) = map (fn x => (id2bb (graph,bbs) (Graph.toInt x))) (Graph.pred (Graph.toNode (graph,label2int label)))
 
+  fun to_list (graph,bbs) = bbs
+
+  fun replace (graph,bbs) bbnew = let
+      fun equals ((a,_),(b,_)) = a = b
+    in (graph,bbnew::(list_diff' equals bbs [bbnew])) end
+
+  fun block_map (graph,bbs) f = (graph,(map f bbs))
+
+  fun code_map (graph,bbs) f = (graph,(map (fn (label,code) => (label,map f code)) bbs))
+
+  fun root graph = id2bb graph 0
+
+  fun dummy_bb code = (NoLabel ~1,code)
+
+  fun num_blocks (graph,bbs) = length bbs
+  
+  fun graph2code graph = let
+      fun helper id = if id < (num_blocks graph) then (code (id2bb graph id))@(helper (id+1)) else []
+    in helper 0 end
+
+  
+  (**********************************
+   *          DEF AND USE           *
+   **********************************)
+  
   fun def bb = let
       fun op2def (code as (LLVM.Load (s,_,_))) = [(s,code)]
         | op2def (code as (LLVM.Add (s,_,_,_))) =  [(s,code)]
@@ -78,6 +120,13 @@ struct
         | op2def _ = []
     in
       List.concat (map op2def (code bb))
+    end
+
+  fun pred_def graph bb = let
+      fun pred_def' m [] = m
+        | pred_def' m bbs = foldl (fn (bb,m) => if BBMap.find (m,bb) = NONE then (pred_def' (BBMap.insert (m,bb,(def bb))) (pred graph bb)) else m) m bbs
+    in
+      List.concat (BBMap.listItems (pred_def' BBMap.empty (pred graph bb)))
     end
 
   fun use bb = let
@@ -108,16 +157,10 @@ struct
       List.concat (map op2use (code bb))
     end
 
-  (* Previous definitions
-    fun vars_in graph bb = list_union (use bb) (list_diff (vars_out graph bb) (def bb))
-    and vars_out graph bb = List.concat (map (vars_in graph) (succ graph bb))
-  *)
-  (* String*OP set
-  structure SOPSet = RedBlackSetFn (struct
-      type ord_key = string
-      val compare = String.compare
-    end)
-  *)
+  
+  (**********************************
+   *           IN AND OUT           *
+   **********************************)
 
   fun in_out last_in last_out graph = let
       val (bbgraph,bbs) = graph (*decompose graph*)
@@ -141,6 +184,11 @@ struct
       else in_out new_in new_out graph
     end
   val in_out = in_out BBMap.empty BBMap.empty
+
+  
+  (**********************************
+   *  CREATING BASIC BLOCK GRAPHS   *
+   **********************************)
 
   (* converts a sequence of op codes into a list of basic blocks *)
   fun ops2bblist block [] = [block]
@@ -192,6 +240,11 @@ struct
 
   fun createBBList (graph,[]) = []
     | createBBList (graph,bb::bbs) = bb::(createBBList (graph,bbs))
+  
+  
+  (**********************************
+   *              TODOT             *
+   **********************************)
 
   fun toDot title bbgraph = let
       val (graph,bbs) = bbgraph
