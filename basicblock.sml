@@ -21,10 +21,11 @@ struct
   (* non order preserving *)
   fun list_uniqify xs = foldl (fn (x,xs) => x::(List.filter (fn y => x<>y) xs) ) xs xs
   (*subtracts the contents of list b from list a*)
-  fun list_diff a [] = a
-    | list_diff a (b::bs) = list_diff (List.filter (fn x => b <> x) a) bs
-  val list_diff = list_diff o list_uniqify 
-  fun list_union a b = list_uniqify a@b
+  fun list_diff equals a [] = a
+    | list_diff equals a (b::bs) = list_diff equals (List.filter (fn x => not (equals (b,x))) a) bs
+  fun list_diff' e a b = list_uniqify (list_diff e a b)
+  val list_diff = (list_diff (op =)) o list_uniqify 
+  fun list_union a b = list_uniqify (a@b)
   (*returns true if two lists are set-wise equal*)
   fun list_equal [] [] = true
     | list_equal [] _ = false
@@ -32,6 +33,18 @@ struct
     | list_equal (x::xs) ys = let
       fun rm ls = List.filter (fn z => z<>x) ls
       in list_equal (rm xs) (rm ys) end
+
+  (*functions for dealing with maps of basic blocks to lists*)
+  structure BBMap = RedBlackMapFn (struct
+      type ord_key = BasicBlock
+      val compare = (fn ((xl,_),(yl,_)) => Int.compare( label2int xl, label2int yl))
+    end)
+  fun map_lookup m key = (case BBMap.find (m,key) of
+        NONE => []
+      | SOME v => v)
+  fun map_equal m1 m2 = let
+    fun oneway m1 m2 = BBMap.foldli (fn (k,v,b) => if list_equal (map_lookup m2 k) v then b else false) true m1
+    in oneway m1 m2 andalso oneway m2 m1 end
 
 (* functions for getting relevant info out of a basic block *)
   exception NoSuchBlock
@@ -106,61 +119,28 @@ struct
     end)
   *)
 
-  structure BBMap = RedBlackMapFn (struct
-      type ord_key = BasicBlock
-      val compare = (fn ((xl,_),(yl,_)) => Int.compare( label2int xl, label2int yl))
-    end)
-
-  (*
-  fun list2bbmap xs = foldl (fn (x,map) => BBMap.insert(map,x)) BBMap.empty xs
-  *)
-
-  fun bbdiff a b = BBMap.filter (fn x => case BBMap.find (b,x) of
-        SOME _ => false
-      | NONE => true ) a
-  fun map_lookup m key = (case BBMap.find (m,key) of
-        NONE => []
-      | SOME v => v)
-(*
-vars_out graph bb = List.concat (map (vars_in graph) (succ graph bb))
-*)
-
   fun in_out last_in last_out graph = let
       val (bbgraph,bbs) = graph (*decompose graph*)
+      fun equals ((a,_),(b,_)) = a = b
       val new_in = foldl (fn (bb,m) =>
           BBMap.insert (
             m,
             bb,
-            (list_union (use bb) (list_diff (map_lookup m bb) (def bb)))
+            (list_union (use bb) (list_diff' equals (map_lookup last_out bb) (def bb)))
           )
         ) BBMap.empty bbs
       val new_out = foldl (fn (bb,m) =>
+          BBMap.insert (
+            m,
+            bb,
+            (foldl (fn (b,ls) => list_union ls (map_lookup last_in b)) [] (succ graph bb))
+          )
         ) BBMap.empty bbs
     in
       if (map_equal last_in new_in) andalso (map_equal last_out new_out) then (new_in,new_out)
       else in_out new_in new_out graph
     end
   val in_out = in_out BBMap.empty BBMap.empty
-
-  (*
-  fun in_out last_in last_out graph = let
-      val (bbgraph,bbs) = graph (*decompose graph*)
-      val new_in = foldl (fn (bb,map) => BBMap.unionWith (fn (x,_) => x) (list2bbmap (use bb)) (bbdiff last_out (list2bbmap (def bb)))) BBMap.empty bbs
-      val new_out = 
-    in
-    end
-  val in_out = in_out BBMap.empty BBMap.empty
-  *)
-
-  (*
-  fun in_out last_in last_out graph bb = let
-      val new_in = list_union (use bb) (list_diff last_out (def bb))
-      val new_out = list_uniqify List.concat (map (
-    in
-
-    end
-  val in_out = in_out [] []
-  *)
 
   (* converts a sequence of op codes into a list of basic blocks *)
   fun ops2bblist block [] = [block]
@@ -215,17 +195,20 @@ vars_out graph bb = List.concat (map (vars_in graph) (succ graph bb))
 
   fun toDot title bbgraph = let
       val (graph,bbs) = bbgraph
+      val (bbin,bbout) = in_out bbgraph
       fun fixendl [] = []
         | fixendl (c::cs) = if (str c) = "\n" then (explode "\\n")@(fixendl cs) else c::(fixendl cs)
       fun combine glue lst = foldr (fn (a,b) => concat [a,glue,b]) "" lst
       fun stripcode [] = []
         | stripcode ((s,code)::xs) = s::(stripcode xs)
       fun definitions [] = []
-        | definitions ((label,code)::rest) = (concat [
+        | definitions ((bb as (label,code))::rest) = (concat [
             "\tBB", Int.toString(label2int label)," [label=\"",
               (implode (fixendl (explode (combine "\\n" (map LLVM.printOP code))))),
-              "\\n\\nuse: ",(combine ", " (stripcode (use (label,code)))),
-              "\\ndef: ",(combine ", " (stripcode (def (label,code)))),
+              "\\n\\nuse: ",(combine ", " (stripcode (use bb))),
+              "\\ndef: ",(combine ", " (stripcode (def bb))),
+              "\\n\\nin: ",(combine ", " (stripcode (map_lookup bbin bb))),
+              "\\nout: ",(combine ", " (stripcode (map_lookup bbout bb))),
               "\"];\n",
             "\tBB", Int.toString(label2int label)," [shape=box];" ])::(definitions rest)
       fun edges [] = []
