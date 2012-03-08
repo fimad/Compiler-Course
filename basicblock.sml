@@ -45,51 +45,51 @@ struct
   fun pred (graph,bbs) (label,_) = map (fn x => (id2bb (graph,bbs) (Graph.toInt x))) (Graph.pred (Graph.toNode (graph,label2int label)))
 
   fun def bb = let
-      fun op2def (LLVM.Load (s,_,_)) = [s]
-        | op2def (LLVM.Add (s,_,_,_)) = [s]
-        | op2def (LLVM.Sub (s,_,_,_)) = [s]
-        | op2def (LLVM.Mul (s,_,_,_)) = [s]
-        | op2def (LLVM.Div (s,_,_,_)) = [s]
-        | op2def (LLVM.CmpEq (s,_,_,_)) = [s]
-        | op2def (LLVM.CmpNe (s,_,_,_)) = [s]
-        | op2def (LLVM.CmpGt (s,_,_,_)) = [s]
-        | op2def (LLVM.CmpGe (s,_,_,_)) = [s]
-        | op2def (LLVM.CmpLt (s,_,_,_)) = [s]
-        | op2def (LLVM.CmpLe (s,_,_,_)) = [s]
-        | op2def (LLVM.And (s,_,_,_)) = [s]
-        | op2def (LLVM.Or (s,_,_,_)) = [s]
-        | op2def (LLVM.Alloca (s,_)) = [s]
-        | op2def (LLVM.Ashr (s,_,_,_)) = [s]
-        | op2def (LLVM.Xor (s,_,_,_)) = [s]
-        | op2def (LLVM.Call (s,_,_,_)) = [s]
+      fun op2def (code as (LLVM.Load (s,_,_))) = [(s,code)]
+        | op2def (code as (LLVM.Add (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Sub (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Mul (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Div (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.CmpEq (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.CmpNe (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.CmpGt (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.CmpGe (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.CmpLt (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.CmpLe (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.And (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Or (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Alloca (s,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Ashr (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Xor (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Call (s,_,_,_))) =  [(s,code)]
         | op2def _ = []
     in
       List.concat (map op2def (code bb))
     end
 
   fun use bb = let
-      fun arg2use (LLVM.Variable s) = [s]
-        | arg2use _ = []
-      fun op2use (LLVM.Load (_,_,a)) = arg2use a
-        | op2use (LLVM.Store (_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.Add (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.Sub (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.Mul (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.Div (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.CmpEq (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.CmpNe (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.CmpGt (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.CmpGe (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.CmpLt (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.CmpLe (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.Br (a)) = arg2use a
-        | op2use (LLVM.CndBr (a,_,_)) = arg2use a
-        | op2use (LLVM.Ret (_,a)) = arg2use a
-        | op2use (LLVM.And (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.Or (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.Ashr (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.Xor (_,_,a1,a2)) = (arg2use a1)@(arg2use a2)
-        | op2use (LLVM.Call (_,_,_,args)) = List.concat (map arg2use args)
+      fun arg2use code (LLVM.Variable s) = [(s,code)]
+        | arg2use _ _ = []
+      fun op2use (code as (LLVM.Load (_,_,a))) = arg2use code a
+        | op2use (code as (LLVM.Store (_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.Add (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.Sub (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.Mul (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.Div (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.CmpEq (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.CmpNe (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.CmpGt (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.CmpGe (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.CmpLt (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.CmpLe (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.Br (a))) = arg2use code a
+        | op2use (code as (LLVM.CndBr (a,_,_))) = arg2use code a
+        | op2use (code as (LLVM.Ret (_,a))) = arg2use code a
+        | op2use (code as (LLVM.And (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.Or (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.Ashr (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.Xor (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.Call (_,_,_,args))) = List.concat (map (arg2use code) args)
         | op2use _ = []
     in
       List.concat (map op2use (code bb))
@@ -193,12 +193,14 @@ struct
       fun fixendl [] = []
         | fixendl (c::cs) = if (str c) = "\n" then (explode "\\n")@(fixendl cs) else c::(fixendl cs)
       fun combine glue lst = foldr (fn (a,b) => concat [a,glue,b]) "" lst
+      fun stripcode [] = []
+        | stripcode ((s,code)::xs) = s::(stripcode xs)
       fun definitions [] = []
         | definitions ((label,code)::rest) = (concat [
             "\tBB", Int.toString(label2int label)," [label=\"",
               (implode (fixendl (explode (combine "\\n" (map LLVM.printOP code))))),
-              "\\n\\nuse: ",(combine ", " (use (label,code))),
-              "\\ndef: ",(combine ", " (def (label,code))),
+              "\\n\\nuse: ",(combine ", " (stripcode (use (label,code)))),
+              "\\ndef: ",(combine ", " (stripcode (def (label,code)))),
               "\"];\n",
             "\tBB", Int.toString(label2int label)," [shape=box];" ])::(definitions rest)
       fun edges [] = []

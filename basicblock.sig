@@ -9,8 +9,8 @@ sig
   val succ : BasicBlockGraph -> BasicBlock -> BasicBlock list
   val pred : BasicBlockGraph -> BasicBlock -> BasicBlock list
 
-  val def : BasicBlock -> string list
-  val use : BasicBlock -> string list
+  val def : BasicBlock -> (string*LLVM.OP) list
+  val use : BasicBlock -> (string*LLVM.OP) list
 
   (*
   val vars_in : BasicBlockGraph -> BasicBlock -> string list
