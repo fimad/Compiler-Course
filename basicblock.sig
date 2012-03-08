@@ -12,8 +12,10 @@ sig
   val def : BasicBlock -> string list
   val use : BasicBlock -> string list
 
+  (*
   val vars_in : BasicBlockGraph -> BasicBlock -> string list
   val vars_out : BasicBlockGraph -> BasicBlock -> string list
+  *)
 
   val createBBGraph : LLVM.OP list -> BasicBlockGraph
   val createBBList : BasicBlockGraph -> BasicBlock list
@@ -22,6 +24,8 @@ sig
 
   exception NoSuchBlock
   exception BadLabel
+
+  structure BBMap : ORD_MAP
 
 end
 

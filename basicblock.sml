@@ -15,6 +15,24 @@ struct
   type BasicBlock = Annotation*BasicBlock'
   type BasicBlockGraph = Graph.graph*(BasicBlock list)
 
+
+  (* functions for treating lists like sets *)
+  (* for each element in xs, filter the remaining list *)
+  (* non order preserving *)
+  fun list_uniqify xs = foldl (fn (x,xs) => x::(List.filter (fn y => x<>y) xs) ) xs xs
+  (*subtracts the contents of list b from list a*)
+  fun list_diff a [] = a
+    | list_diff a (b::bs) = list_diff (List.filter (fn x => b <> x) a) bs
+  val list_diff = list_diff o list_uniqify 
+  fun list_union a b = list_uniqify a@b
+  (*returns true if two lists are set-wise equal*)
+  fun list_equal [] [] = true
+    | list_equal [] _ = false
+    | list_equal _ [] = false
+    | list_equal (x::xs) ys = let
+      fun rm ls = List.filter (fn z => z<>x) ls
+      in list_equal (rm xs) (rm ys) end
+
 (* functions for getting relevant info out of a basic block *)
   exception NoSuchBlock
 
@@ -77,14 +95,47 @@ struct
       List.concat (map op2use (code bb))
     end
 
-  (*subtracts the contents of list b from list a*)
-  fun list_diff a [] = a
-    | list_diff a (b::bs) = list_diff (List.filter (fn x => b <> x) a) bs
+  (* Previous definitions
+    fun vars_in graph bb = list_union (use bb) (list_diff (vars_out graph bb) (def bb))
+    and vars_out graph bb = List.concat (map (vars_in graph) (succ graph bb))
+  *)
+  structure SetT = RedBlackSetFn (struct
+      type ord_key = string
+      val compare = String.compare
+    end)
 
-  fun list_union a b = a@b
+  structure BBMap = RedBlackMapFn (struct
+      type ord_key = BasicBlock
+      val compare = (fn ((xl,_),(yl,_)) => Int.compare( label2int xl, label2int yl))
+    end)
 
-  fun vars_in graph bb = list_union (use bb) (list_diff (vars_out graph bb) (def bb))
-  and vars_out graph bb = List.concat (map (vars_in graph) (succ graph bb))
+  (*
+  fun list2bbmap xs = foldl (fn (x,map) => BBMap.insert(map,x)) BBMap.empty xs
+  *)
+
+  fun bbdiff a b = BBMap.filter (fn x => case BBMap.find (b,x) of
+        SOME _ => false
+      | NONE => true ) a
+
+  (*
+  fun in_out last_in last_out graph = let
+      val (bbgraph,bbs) = graph (*decompose graph*)
+      val new_in = foldl (fn (bb,map) => BBMap.unionWith (fn (x,_) => x) (list2bbmap (use bb)) (bbdiff last_out (list2bbmap (def bb)))) BBMap.empty bbs
+      val new_out = 
+    in
+    end
+  val in_out = in_out BBMap.empty BBMap.empty
+  *)
+
+  (*
+  fun in_out last_in last_out graph bb = let
+      val new_in = list_union (use bb) (list_diff last_out (def bb))
+      val new_out = list_uniqify List.concat (map (
+    in
+
+    end
+  val in_out = in_out [] []
+  *)
 
   (* converts a sequence of op codes into a list of basic blocks *)
   fun ops2bblist block [] = [block]
