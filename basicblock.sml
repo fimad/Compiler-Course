@@ -126,7 +126,7 @@ struct
       fun pred_def' m [] = m
         | pred_def' m bbs = foldl (fn (bb,m) => if BBMap.find (m,bb) = NONE then (pred_def' (BBMap.insert (m,bb,(def bb))) (pred graph bb)) else m) m bbs
     in
-      List.concat (BBMap.listItems (pred_def' BBMap.empty (pred graph bb)))
+      List.concat (BBMap.listItems (pred_def' (map_insert BBMap.empty bb []) (pred graph bb)))
     end
 
   fun use bb = let
