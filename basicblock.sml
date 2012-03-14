@@ -153,8 +153,9 @@ struct
         | op2use (code as (LLVM.Xor (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Call (_,_,_,args))) = List.concat (map (arg2use code) args)
         | op2use _ = []
+      fun equals ((a,_),(b,_)) = a = b
     in
-      List.concat (map op2use (code bb))
+      list_diff' equals (List.concat (map op2use (code bb))) (def bb)
     end
 
   
@@ -170,6 +171,7 @@ struct
             m,
             bb,
             (list_union (use bb) (list_diff' equals (map_lookup last_out bb) (def bb)))
+            (*(list_diff' equals (list_union (use bb) (map_lookup last_out bb)) (def bb))*)
           )
         ) BBMap.empty bbs
       val new_out = foldl (fn (bb,m) =>
