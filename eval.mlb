@@ -13,6 +13,8 @@ graph.sig
 graph.sml
 basicblock.sig
 basicblock.sml
+ssa.sig
+ssa.sml
 optimize.sig
 optimize.sml
 exec.sml

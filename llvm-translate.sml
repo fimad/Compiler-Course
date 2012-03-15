@@ -40,8 +40,10 @@ struct
       (l,code)
     end
   | translate (Ast.Var (x)) =  let
-      val l = makenextvar ()
-      val code = [LLVM.Load (l,LLVM.pi32,(LLVM.Variable x))]
+      (*val l = makenextvar ()*)
+      (*val code = [LLVM.Load (l,LLVM.pi32,(LLVM.Variable x))]*)
+      val l = concat ["__",x]
+      val code = []
     in
       (l,code)
     end

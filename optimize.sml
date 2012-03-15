@@ -20,9 +20,25 @@ fun remove_excess_loads graph = let
         val load' = fn m => fn bb => load m (BB.code bb)
         val load = fn bb => load VarMap.empty (BB.code bb)
 
-        (* This causes a nasty infinite loop, fix me? *)
-        fun pred_load' bb = load' (foldl (fn (pbb,m) => pred_load' pbb) VarMap.empty (BB.pred graph bb)) bb
-        fun pred_load bb = foldl (fn (bb,m) => VarMap.unionWith (fn (a,b) => a) ((pred_load' bb),m)) VarMap.empty (BB.pred graph bb)
+        fun pred_load bb = let
+            fun pred_load' bbmap varmap bb = if BB.map_contains bbmap bb
+              then (bbmap,varmap)
+              else let 
+                  (*val (bbmap,varmap) = foldl (fn (pbb,(bbmap,varmap)) => pred_load' (BB.map_insert bbmap bb true) varmap pbb) (bbmap,varmap) (BB.pred graph bb)*)
+                  val maps = map (fn bb => pred_load' (BB.map_insert bbmap bb true) (load' varmap bb) bb) (BB.pred graph bb)
+                  val (bbmap,varmap) = foldl
+                    (fn ((bm',vm'),(bm,vm)) => (
+                      BB.BBMap.unionWith (fn (a,b)=>a) (bm',bm) ,
+                      VarMap.unionWith (fn (a,b) => if a = NONE orelse b = NONE then NONE else a) (vm',vm)
+                    ))
+                    (bbmap,varmap)
+                    maps
+                in (bbmap,varmap) end
+            (*val (bbmap,varmap) = foldl (fn (bb,(bbmap,varmap)) => pred_load' bbmap varmap bb) (BB.map_insert BB.BBMap.empty bb true,VarMap.empty) (BB.pred graph bb)*)
+            val (bbmap,varmap) = pred_load' (BB.map_insert BB.BBMap.empty bb true) VarMap.empty bb
+          in
+            varmap
+          end
 
         val pred_loads = pred_load bb
         fun in_defs v m = (case VarMap.find (m,v) of

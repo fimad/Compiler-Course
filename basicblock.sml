@@ -42,9 +42,10 @@ struct
       in list_equal (rm xs) (rm ys) end
 
   (*functions for dealing with maps of basic blocks to lists*)
+  val bb_compare = (fn ((xl,_),(yl,_)) => Int.compare( label2int xl, label2int yl))
   structure BBMap = RedBlackMapFn (struct
       type ord_key = BasicBlock
-      val compare = (fn ((xl,_),(yl,_)) => Int.compare( label2int xl, label2int yl))
+      val compare = bb_compare
     end)
   fun map_lookup m key = (case BBMap.find (m,key) of
         NONE => []
@@ -54,6 +55,7 @@ struct
     in oneway m1 m2 andalso oneway m2 m1 end
   fun map_contains m bb = if BBMap.find (m,bb) = NONE then false else true
   fun map_insert m bb v = BBMap.insert (m,bb,v)
+  fun map_find m key = BBMap.find (m,key)
 
   fun graph_equal (_,bbs_1) (_,bbs_2) = list_equal bbs_1 bbs_2
 
@@ -74,6 +76,8 @@ struct
   fun succ (graph,bbs) (label,_) = map (fn x => (id2bb (graph,bbs) (Graph.toInt x))) (Graph.succ (Graph.toNode (graph,label2int label)))
   fun pred (graph,bbs) (label,_) = map (fn x => (id2bb (graph,bbs) (Graph.toInt x))) (Graph.pred (Graph.toNode (graph,label2int label)))
 
+  fun bb_equal (l1,_) (l2,_) => label2int l1 = label2int l2
+
   fun to_list (graph,bbs) = bbs
 
   fun replace (graph,bbs) bbnew = let
@@ -93,6 +97,12 @@ struct
   fun graph2code graph = let
       fun helper id = if id < (num_blocks graph) then (code (id2bb graph id))@(helper (id+1)) else []
     in helper 0 end
+
+  fun isRealVariable v = case (explode v) of
+      ("_"::"_"::_) => true
+    | _ => false
+  (* find only the use and def that contain __ as the leading characters *)
+  fun variables (graph,bbs) = list_uniqify (map (fn b => isRealVariable) ((use b)@(def b)) bbs)
 
   
   (**********************************

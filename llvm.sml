@@ -32,6 +32,7 @@ struct
     | Xor of Result*Type*Arg*Arg
     | Call of Result*Type*string*(Arg list)
     | Raw of string
+    | Phi of Result*(Arg*Arg list) (* Needs to be value/variabe,Label(of the corresponding block) *)
 
 (* A Method is a string name, a list of string*type params, and a list of opcodes *)
   type Method = string*Type*((string*Type) list)*(OP list)
