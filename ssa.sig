@@ -2,10 +2,11 @@ signature STATICSINGLEASSIGNMENT =
 sig
   (*.*)
 
-  val calcDF : BasicBlockGraph -> BB.BBMap
-  val resolvePhi : BasicBlockGraph -> BasicBlockGraph
-  val renameVariables : BasicBlockGraph -> BasicBlockGraph
+  val calcDom : BB.BasicBlockGraph -> (BB.BasicBlock list) BB.BBMap.map
+  val calcDF : BB.BasicBlockGraph -> (BB.BasicBlock list) BB.BBMap.map
+  val resolvePhi : BB.BasicBlockGraph -> BB.BasicBlockGraph
+  val renameVariables : BB.BasicBlockGraph -> BB.BasicBlockGraph
 
-  val completeSSA : BasicBlockGraph -> BasicBlockGraph
+  val completeSSA : BB.BasicBlockGraph -> BB.BasicBlockGraph
 
 end

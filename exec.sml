@@ -57,9 +57,12 @@ val shouldDot = shouldArg "-dot"
 
 val _ = LLVM_Translate.compile result 
 val program = LLVM_Translate.getProgram ()
-val bbGraph = SSA.resolvePhi (BB.createBBGraph code)
-fun optimizeMethod (name,ty,args,code) = (name,ty,args,((BB.graph2code o (Optimize.optimize optimizeLevel)) bbGraph))
-fun method2dot (title,_,_,code) = BB.toDot title (Optimize.optimize optimizeLevel (BB.createBBGraph code))
+fun optimizeMethod (name,ty,args,code) = let
+    val bbGraph = SSA.completeSSA (BB.createBBGraph code)
+  in
+    (name,ty,args,((BB.graph2code o (Optimize.optimize optimizeLevel)) bbGraph))
+  end
+fun method2dot (title,_,_,code) = DOT.toDot title (Optimize.optimize optimizeLevel (BB.createBBGraph code))
 val _ = if shouldDot
   then print (concat (map method2dot program))
   else print (LLVM.printProgram (map optimizeMethod program))

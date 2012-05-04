@@ -23,6 +23,8 @@ struct
   (* functions for treating lists like sets *)
   (* for each element in xs, filter the remaining list *)
   (* non order preserving *)
+  fun list_has lst a = List.exists (fn b => a=b) lst
+
   fun list_uniqify xs = foldl (fn (x,xs) => x::(List.filter (fn y => x<>y) xs) ) xs xs
 
   (*subtracts the contents of list b from list a*)
@@ -32,6 +34,9 @@ struct
   val list_diff = (fn a => fn b => list_uniqify (list_diff (op =) a b))
 
   fun list_union a b = list_uniqify (a@b)
+
+  fun list_inter a [] = []
+    | list_inter a (b::bs) = (if list_has a b then [b] else [])@(list_inter a bs)
 
   (*returns true if two lists are set-wise equal*)
   fun list_equal [] [] = true
@@ -76,9 +81,10 @@ struct
   fun succ (graph,bbs) (label,_) = map (fn x => (id2bb (graph,bbs) (Graph.toInt x))) (Graph.succ (Graph.toNode (graph,label2int label)))
   fun pred (graph,bbs) (label,_) = map (fn x => (id2bb (graph,bbs) (Graph.toInt x))) (Graph.pred (Graph.toNode (graph,label2int label)))
 
-  fun bb_equal (l1,_) (l2,_) => label2int l1 = label2int l2
+  fun bb_equal (l1,_) (l2,_) = label2int l1 = label2int l2
 
   fun to_list (graph,bbs) = bbs
+  fun to_graph (graph,bbs) = graph
 
   fun replace (graph,bbs) bbnew = let
       fun equals ((a,_),(b,_)) = a = b
@@ -97,12 +103,6 @@ struct
   fun graph2code graph = let
       fun helper id = if id < (num_blocks graph) then (code (id2bb graph id))@(helper (id+1)) else []
     in helper 0 end
-
-  fun isRealVariable v = case (explode v) of
-      ("_"::"_"::_) => true
-    | _ => false
-  (* find only the use and def that contain __ as the leading characters *)
-  fun variables (graph,bbs) = list_uniqify (map (fn b => isRealVariable) ((use b)@(def b)) bbs)
 
   
   (**********************************
@@ -168,6 +168,11 @@ struct
       list_diff' equals (List.concat (map op2use (code bb))) (def bb)
     end
 
+  fun isRealVariable v = (case (explode v) of
+      ((#"_")::(#"_")::_) => true
+    | _ => false)
+  (* find only the use and def that contain __ as the leading characters *)
+  fun variables (graph,bbs) = (list_uniqify o (map #1) o List.concat) (map (fn b => List.filter (isRealVariable o #1) ((use b)@(def b))) bbs)
   
   (**********************************
    *           IN AND OUT           *
@@ -253,38 +258,4 @@ struct
   fun createBBList (graph,[]) = []
     | createBBList (graph,bb::bbs) = bb::(createBBList (graph,bbs))
   
-  
-  (**********************************
-   *              TODOT             *
-   **********************************)
-
-  fun toDot title bbgraph = let
-      val (graph,bbs) = bbgraph
-      val (bbin,bbout) = in_out bbgraph
-      fun fixendl [] = []
-        | fixendl (c::cs) = if (str c) = "\n" then (explode "\\n")@(fixendl cs) else c::(fixendl cs)
-      fun combine glue lst = foldr (fn (a,b) => concat [a,glue,b]) "" lst
-      fun stripcode [] = []
-        | stripcode ((s,code)::xs) = s::(stripcode xs)
-      fun definitions [] = []
-        | definitions ((bb as (label,code))::rest) = (concat [
-            "\tBB", Int.toString(label2int label)," [label=\"",
-              (implode (fixendl (explode (combine "\\n" (map LLVM.printOP code))))),
-              "\\n\\nuse: ",(combine ", " (stripcode (use bb))),
-              "\\ndef: ",(combine ", " (stripcode (def bb))),
-              "\\n\\nin: ",(combine ", " (stripcode (map_lookup bbin bb))),
-              "\\nout: ",(combine ", " (stripcode (map_lookup bbout bb))),
-              "\"];\n",
-            "\tBB", Int.toString(label2int label)," [shape=box];" ])::(definitions rest)
-      fun edges [] = []
-        | edges ((label,code)::rest) = (combine "\n" (map (fn i => (concat [
-            "\tBB", Int.toString(label2int label)," -> BB",Int.toString(Graph.toInt i),";" ])) (Graph.succ (Graph.toNode(graph,label2int label)))))::(edges rest)
-    in
-      concat [
-          "digraph ",title," {\n"
-        , (combine "\n" (definitions bbs))
-        , (combine "\n" (edges bbs))
-        , "\n}\n" ]
-    end
-
 end

@@ -17,4 +17,6 @@ ssa.sig
 ssa.sml
 optimize.sig
 optimize.sml
+dot.sig
+dot.sml
 exec.sml

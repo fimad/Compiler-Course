@@ -32,7 +32,7 @@ struct
     | Xor of Result*Type*Arg*Arg
     | Call of Result*Type*string*(Arg list)
     | Raw of string
-    | Phi of Result*(Arg*Arg list) (* Needs to be value/variabe,Label(of the corresponding block) *)
+    | Phi of Result*((Arg*Arg) list) (* Needs to be value/variabe,Label(of the corresponding block) *)
 
 (* A Method is a string name, a list of string*type params, and a list of opcodes *)
   type Method = string*Type*((string*Type) list)*(OP list)
@@ -152,6 +152,7 @@ struct
     | printOP (Alloca (res,ty)) =  h_printROP res "alloca" ty []
     | printOP (Call (res,ty,name,args)) =  concat [(h_printROP res "call" ty [])," @",name,"(",(combArgs (map (fn x=> concat["i32 ",printArg x]) args)),")"]
     | printOP (Raw str) = str
+    | printOP (Phi (res,args)) =  concat ["%",res," phi",(combArgs (map (fn (x,y) => concat["[ ",printArg x,",",printArg y,"]"]) args))]
 
   fun printMethod (name,rtype,args,ops) = let
       val showArgs = foldr (

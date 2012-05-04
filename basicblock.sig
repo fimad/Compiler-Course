@@ -2,9 +2,12 @@ signature BASICBLOCK =
 sig
   (*.*)
 
-  type BasicBlock
+  eqtype BasicBlock
+  type Annotation
   type BasicBlockGraph
   structure BBMap : ORD_MAP
+
+  val label2int : Annotation -> int
 
   val label : BasicBlock -> string
   val code : BasicBlock -> LLVM.OP list
@@ -16,6 +19,7 @@ sig
   val code_map : BasicBlockGraph -> (LLVM.OP -> LLVM.OP) -> BasicBlockGraph
   val replace : BasicBlockGraph -> BasicBlock -> BasicBlockGraph
   val to_list : BasicBlockGraph -> BasicBlock list
+  val to_graph : BasicBlockGraph -> Graph.graph
   val root : BasicBlockGraph -> BasicBlock
   val id2bb : BasicBlockGraph -> int -> BasicBlock
   val bb2id : BasicBlock -> int
@@ -38,11 +42,13 @@ sig
 
   val list_uniqify : ''a list -> ''a list
   val list_union : ''a list -> ''a list -> ''a list
+  val list_inter : ''a list -> ''a list -> ''a list
   val list_diff : ''a list -> ''a list -> ''a list
   val list_equal : ''a list -> ''a list -> bool
+  val list_has : ''a list -> ''a -> bool
 
-  val map_lookup : (string*LLVM.OP) list BBMap.map -> BasicBlock -> (string*LLVM.OP) list
-  val map_equal : (string*LLVM.OP) list BBMap.map -> (string*LLVM.OP) list BBMap.map -> bool
+  val map_lookup : ''a list BBMap.map -> BasicBlock -> ''a list
+  val map_equal : ''a list BBMap.map -> ''a list BBMap.map -> bool
   val map_contains : ''a BBMap.map -> BasicBlock -> bool
   val map_insert : ''a BBMap.map -> BasicBlock -> ''a -> ''a BBMap.map
   val map_find : ''a BBMap.map -> BasicBlock -> ''a option
@@ -51,8 +57,6 @@ sig
 
   val createBBGraph : LLVM.OP list -> BasicBlockGraph
   val createBBList : BasicBlockGraph -> BasicBlock list
-
-  val toDot : string -> BasicBlockGraph -> string
 
   exception NoSuchBlock
   exception BadLabel
