@@ -47,11 +47,11 @@ fun calcDF bbg = let
     val dmap = calcDom bbg
     val dfmap = ref BB.BBMap.empty
     fun dominates d n = let
-        val SOME doms = BB.map_find dmap n
-      in (List.filter (fn x => BB.bb_equal n x) doms) <> [] end
+        val doms = BB.map_lookup dmap n
+      in (List.filter (fn x => BB.bb_equal d x) doms) <> [] end
     fun idom n = let
     (* It is said that a block M immediately dominates block N if M dominates N, and there is no intervening block P such that M dominates P and P dominates N. *)
-      val SOME doms = BB.map_find dmap n
+      val doms = BB.map_lookup dmap n
       val (x::_) = List.filter (fn m => 
             (List.filter (fn p => (dominates m p) andalso (dominates p n)) (BB.list_diff doms [m])) = []
           ) doms
@@ -62,7 +62,7 @@ fun calcDF bbg = let
         val children = List.filter (fn c => not (BB.map_contains (!dfmap) c)) (BB.succ bbg n)
         val _ = map (fn c => let
               val _ = calcDF_help c (* compute _calcDF for all the children *)
-              val SOME wlist = BB.map_find (!dfmap) c
+              val wlist = BB.map_lookup (!dfmap) c
               val _ = (s := BB.list_union (!s) (List.filter (fn w => not (dominates n w) orelse BB.bb_equal n w) wlist))
             in () end) children
         val _ = (dfmap := BB.map_insert (!dfmap) n (!s))
@@ -107,7 +107,7 @@ fun resolvePhi bbg = let
     val phisites = ref PhiMap.empty
     fun forvar a [] = ()
       | forvar a (n::w) = let
-          val SOME df_n = BB.map_find dfmap n
+          val df_n = BB.map_lookup dfmap n
         in
           forvar a (w@(List.concat(
             map (fn y => 
