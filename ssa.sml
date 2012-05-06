@@ -101,6 +101,7 @@ structure PhiMap = RedBlackMapFn (struct
 fun resolvePhi bbg = let
     val dfmap = calcDF bbg
     val vars = BB.variables bbg
+    fun def bb = map #1 (BB.def bb)
     fun real_def bb = List.filter BB.isRealVariable (map #1 (BB.def bb))
     val defsites = ref VarMap.empty
     (* fill up defsites yo *)
@@ -113,7 +114,8 @@ fun resolvePhi bbg = let
             in
               lst
             end
-          ) (real_def n)) (BB.to_list bbg)
+          (*) (real_def n)) (BB.to_list bbg)*)
+          ) (def n)) (BB.to_list bbg)
     val new_bbg = ref bbg
     val phisites = ref PhiMap.empty
     fun forvar a [] = ()

@@ -26,12 +26,48 @@ struct
 
   exception TranslationError of string;
 
+  fun setResult newRes (oldRes,code) = let
+      fun setResult_help [] = []
+        | setResult_help (x::[]) = 
+          [(case x of
+              (LLVM.Load (_,a1,a2)) => LLVM.Load (newRes,a1,a2)
+            | (LLVM.Add (_,a1,a2,a3)) => LLVM.Add (newRes,a1,a2,a3)
+            | (LLVM.Sub (_,a1,a2,a3)) => LLVM.Sub (newRes,a1,a2,a3)
+            | (LLVM.Mul (_,a1,a2,a3)) => LLVM.Mul (newRes,a1,a2,a3)
+            | (LLVM.Div (_,a1,a2,a3)) => LLVM.Div (newRes,a1,a2,a3)
+            | (LLVM.CmpEq (_,a1,a2,a3)) => LLVM.CmpEq (newRes,a1,a2,a3)
+            | (LLVM.CmpNe (_,a1,a2,a3)) => LLVM.CmpNe (newRes,a1,a2,a3)
+            | (LLVM.CmpGt (_,a1,a2,a3)) => LLVM.CmpGt (newRes,a1,a2,a3)
+            | (LLVM.CmpGe (_,a1,a2,a3)) => LLVM.CmpGe (newRes,a1,a2,a3)
+            | (LLVM.CmpLt (_,a1,a2,a3)) => LLVM.CmpLt (newRes,a1,a2,a3)
+            | (LLVM.CmpLe (_,a1,a2,a3)) => LLVM.CmpLe (newRes,a1,a2,a3)
+            | (LLVM.And (_,a1,a2,a3)) => LLVM.And (newRes,a1,a2,a3)
+            | (LLVM.Or (_,a1,a2,a3)) => LLVM.Or (newRes,a1,a2,a3)
+            | (LLVM.Alloca (_,a1)) => LLVM.Alloca (newRes,a1)
+            | (LLVM.Ashr (_,a1,a2,a3)) => LLVM.Ashr (newRes,a1,a2,a3)
+            | (LLVM.Xor (_,a1,a2,a3)) => LLVM.Xor (newRes,a1,a2,a3)
+            | (LLVM.Call (_,a1,a2,a3)) => LLVM.Call (newRes,a1,a2,a3)
+            | (LLVM.Phi (_,a1)) => LLVM.Phi (newRes,a1)
+            | any => any)]
+        | setResult_help (x::xs) = setResult_help xs
+    in
+      (newRes, setResult_help code)
+    end
+
   fun evalArg (Ast.Num i) = ([],(LLVM.Num i))
     | evalArg expr = let
         val (res,code) = translate expr
       in
         (code, (LLVM.Variable res))
       end
+
+  (*Hack to set variables correctly*)
+  and setVariable result exp = 
+    (case exp of
+      (*needed for assign and let*)
+      (Ast.Var x) => (result, [LLVM.Add (result,LLVM.i32, (LLVM.Num 0), (LLVM.Variable x))])
+      (*needed for everything eles*)
+      | exp => setResult result (translate exp))
 
   and translate (Ast.Num (i)) = let
       val l = makenextvar ()
@@ -40,12 +76,15 @@ struct
       (l,code)
     end
   | translate (Ast.Var (x)) =  let
-      (*val l = makenextvar ()*)
-      (*val code = [LLVM.Load (l,LLVM.pi32,(LLVM.Variable x))]*)
-      val l = concat ["__",x]
+  (*
+      val l = makenextvar ()
+      val code = [LLVM.Load (l,LLVM.pi32,(LLVM.Variable x))]
+      *)
+      val l = makenextvar ()
+      (* val code = [LLVM.Add (l,LLVM.i32, (LLVM.Num 0), (LLVM.Variable x))] *)
       val code = []
     in
-      (l,code)
+      (x,code)
     end
   | translate (Ast.Eq (a,b)) = let
       val (code1,arg1) = evalArg a
@@ -141,15 +180,20 @@ struct
     in
       (in_res, to_code@by_code@[
           LLVM.Br(LLVM.Label(cnd_label))
+
         , LLVM.DefnLabel(update_label)
+        (* No longer handling variables in this manner
         , LLVM.Load(id_var,LLVM.pi32,LLVM.Variable(id))
         , LLVM.Add(add_var,LLVM.i32,LLVM.Variable(id_var),by_res)
-        , LLVM.Store(LLVM.i32,LLVM.Variable(add_var),LLVM.Variable(id))
+        , LLVM.Store(LLVM.i32,LLVM.Variable(add_var),LLVM.Variable(id))*)
+        , LLVM.Add(id,LLVM.i32,LLVM.Variable(id),by_res)
         , LLVM.Br(LLVM.Label(cnd_label))
+
         , LLVM.DefnLabel(cnd_label)
-        , LLVM.Load(id_cmp_var,LLVM.pi32,LLVM.Variable(id))
-        , LLVM.CmpNe(cmp_var,LLVM.i32,LLVM.Variable(id_cmp_var),to_res)
+        (*, LLVM.Load(id_cmp_var,LLVM.pi32,LLVM.Variable(id))*)
+        , LLVM.CmpNe(cmp_var,LLVM.i32,LLVM.Variable(id),to_res)
         , LLVM.CndBr(LLVM.Variable(cmp_var),LLVM.Label(loop_start_label),LLVM.Label(loop_end_label))
+
         , LLVM.DefnLabel(loop_start_label)
        ]@do_code@[
           LLVM.Br(LLVM.Label(update_label))
@@ -157,6 +201,26 @@ struct
        ]@in_code)
     end
   | translate (Ast.If (bexp,texp,fexp)) = let
+      val [l_true,l_false,l_out] = map makenextlabel [(),(),()]
+      val result = makenextvar ()
+      (*conditional code and result*)
+      val (bcode,bres) = evalArg bexp
+      (*set the result of both the true and false expressions to result*)
+      val (_,tcode) = setResult result (translate texp)
+      val (_,fcode) = setResult result (translate fexp)
+    in
+      (result, bcode@[
+          LLVM.CndBr (bres,(LLVM.Label l_true),(LLVM.Label l_false))
+        , LLVM.DefnLabel l_true
+      ]@tcode@[
+          LLVM.Br (LLVM.Label l_out)
+        , LLVM.DefnLabel l_false
+      ]@fcode@[
+          LLVM.Br (LLVM.Label l_out)
+        , LLVM.DefnLabel l_out
+      ])
+    end
+  (*
       val [l1,l2,l3] = map makenextlabel [(),(),()]
       val [l4,l5] = map makenextvar [(),()]
       val (bcode,bres) = evalArg bexp
@@ -179,7 +243,8 @@ struct
         , LLVM.Load (l5,LLVM.pi32,(LLVM.Variable l4))
       ])
     end
-  | translate (Ast.Assign (id,exp)) = let
+    *)
+  | translate (Ast.Assign (id,exp)) = (*let
       val (vcode,varg) = evalArg exp
       val l = makenextvar ()
     in
@@ -187,32 +252,39 @@ struct
           LLVM.Store (LLVM.i32,varg,(LLVM.Variable id))
         , LLVM.Load (l,LLVM.pi32,(LLVM.Variable id))
       ])
-    end
-  | translate (Ast.Let (id,exp,inexp)) = let
-      val (vcode,varg) = evalArg exp
+    end *)
+    setVariable id exp
+  | translate (Ast.Let (id,exp,inexp)) =  let
+      (*val (vcode,varg) = evalArg exp*)
+      val (vres,vcode) = setVariable id exp
       val (res,code) = translate inexp
     in
+    (*
       (res, vcode@[
           LLVM.Alloca (id,LLVM.i32)
         , LLVM.Store (LLVM.i32,varg,(LLVM.Variable id))
       ]@code)
+      *)
+      (res, vcode@code)
     end
   | translate (Ast.LetSta (fid,xids,fexp,inexp)) = let
       fun zipI32 [] = []
         | zipI32 (x::xs) = (x,LLVM.i32)::(zipI32 xs)
       val (fcode,farg) = evalArg fexp
       val methodBody = 
+      (* let's see what happens when we treat parameters like 'variables' hah!
         (*allocate memory for the parameters*)
         (map (fn x => LLVM.Alloca (x,LLVM.i32)) xids)@
         (*store the parameters in the allocated memory*)
         (map (fn x =>
-          LLVM.Store (LLVM.i32,LLVM.Variable(concat ["_",x]),LLVM.Variable(x))
+          LLVM.Store (LLVM.i32,LLVM.Variable(concat [(*"_",*)x]),LLVM.Variable(x))
         ) xids)@
+        *)
         (*execute the method body*)
         fcode@
         (*add the return statement*)
         [LLVM.Ret (LLVM.i32, farg)]
-      val _ = addMethod (fid,LLVM.i32,(zipI32 (map (fn x => concat ["_",x]) xids)),methodBody)
+      val _ = addMethod (fid,LLVM.i32,(zipI32 (map (fn x => concat [(*"_",*)x]) xids)),methodBody)
     in
       translate inexp
     end
