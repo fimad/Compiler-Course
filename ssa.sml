@@ -42,24 +42,35 @@ fun calcDom bbg = let
     calcDom_help (!dmap)
   end
 
+fun dominates dmap d n = let (* d dominates n *)
+    val doms = BB.map_lookup dmap n
+  in List.exists (fn x => BB.bb_equal d x) doms end
+
+fun idom2 domMap n = let
+(* It is said that a block M immediately dominates block N if M dominates N, and there is no intervening block P such that M dominates P and P dominates N. *)
+  val doms = BB.map_lookup domMap n
+  in case
+    List.filter (fn m => 
+        (List.filter (fn p => dominates domMap m p) (BB.list_diff doms [m,n])) = []
+      ) (BB.list_diff doms [n])
+  of
+    (x::_) => x
+    | _ => n
+  end
+
+fun idom bbg n = idom2 (calcDom bbg) n
+
 fun calcDF bbg = let
     (* calculate dominator tree ? *)
     val dmap = calcDom bbg
     val dfmap = ref BB.BBMap.empty
-    fun dominates d n = let
-        val doms = BB.map_lookup dmap n
-      in (List.filter (fn x => BB.bb_equal d x) doms) <> [] end
-    fun idom n = let
-    (* It is said that a block M immediately dominates block N if M dominates N, and there is no intervening block P such that M dominates P and P dominates N. *)
-      val doms = BB.map_lookup dmap n
-      val (x::_) = List.filter (fn m => 
-            (List.filter (fn p => (dominates m p) andalso (dominates p n)) (BB.list_diff doms [m])) = []
-          ) doms
-      in x end
+    val dominates = dominates dmap
+    val idom = idom2 dmap
     fun calcDF_help n = if not (BB.map_contains (!dfmap) n) then let (* only run this function if we haven't already been called on n *)
         val _ = (dfmap := BB.map_insert (!dfmap) n [])
-        val s = ref (List.filter (fn y => idom y <> n) (BB.succ bbg n)) (* compute DF_local_[n] *)
-        val children = List.filter (fn c => not (BB.map_contains (!dfmap) c)) (BB.succ bbg n)
+        val s = ref (List.filter (fn y => not (BB.bb_equal (idom y) n)) (BB.succ bbg n)) (* compute DF_local_[n] *)
+        (* A dominator tree is a tree where each node's children are those nodes it immediately dominates. Because the immediate dominator is unique, it is a tree. The start node is the root of the tree. *)
+        val children = List.filter (fn c => BB.bb_equal (idom c) n) (BB.to_list bbg)
         val _ = map (fn c => let
               val _ = calcDF_help c (* compute _calcDF for all the children *)
               val wlist = BB.map_lookup (!dfmap) c
