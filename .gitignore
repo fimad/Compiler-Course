@@ -1,0 +1,9 @@
+.*
+*.bc
+*.ps
+*.o
+*.dot
+eval
+lexer.lex.sml
+parser.grm.sig
+parser.grm.sml

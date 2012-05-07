@@ -75,6 +75,9 @@ struct
     | id2bb (graph,((label,bb)::bs)) id = if label2int label = id then (label,bb) else id2bb (graph,bs) id
   fun bb2id (label,code) = label2int label
 
+  (*grabs a fresh copy of the bb from the graph*)
+  fun refresh bbg bb = id2bb bbg (bb2id bb)
+
   fun code (_,code) = code
   fun set_code (label,_) code = (label,code)
   fun label (label,_) = concat ["BB",Int.toString(label2int label)]
@@ -104,6 +107,19 @@ struct
       fun helper id = if id < (num_blocks graph) then (code (id2bb graph id))@(helper (id+1)) else []
     in helper 0 end
 
+  fun get_label bbg bb = let
+      val bb = refresh bbg bb
+    in
+      case (code bb) of
+        ((LLVM.DefnLabel l)::rest) => (bbg, l)
+      | code => let
+          val label_string = LLVM_Translate.makenextlabel ()
+          val label_code = LLVM.DefnLabel label_string
+          val new_code = label_code::code
+        in
+          (replace bbg (set_code bb new_code), label_string)
+        end
+     end
   
   (**********************************
    *          DEF AND USE           *
@@ -172,7 +188,7 @@ struct
       ((#"_")::(#"_")::_) => true
     | _ => false)
   (* find only the use and def that contain __ as the leading characters *)
-  fun variables (graph,bbs) = (list_uniqify o (map #1) o List.concat) (map (fn b => List.filter (isRealVariable o #1) ((use b)@(def b))) bbs)
+  fun variables (graph,bbs) = (list_uniqify o (map #1) o List.concat) (map (fn b => (use b)@(def b)) bbs)
   
   (**********************************
    *           IN AND OUT           *

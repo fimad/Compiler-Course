@@ -15,12 +15,14 @@ sig
   val succ : BasicBlockGraph -> BasicBlock -> BasicBlock list
   val pred : BasicBlockGraph -> BasicBlock -> BasicBlock list
 
+  val get_label : BasicBlockGraph -> BasicBlock -> (BasicBlockGraph*string) (*will add a label if need be, so it might change the graph*)
   val block_map : BasicBlockGraph -> (BasicBlock -> BasicBlock) -> BasicBlockGraph
   val code_map : BasicBlockGraph -> (LLVM.OP -> LLVM.OP) -> BasicBlockGraph
   val replace : BasicBlockGraph -> BasicBlock -> BasicBlockGraph
   val to_list : BasicBlockGraph -> BasicBlock list
   val to_graph : BasicBlockGraph -> Graph.graph
   val root : BasicBlockGraph -> BasicBlock
+  val refresh : BasicBlockGraph -> BasicBlock -> BasicBlock
   val id2bb : BasicBlockGraph -> int -> BasicBlock
   val bb2id : BasicBlock -> int
   val graph2code : BasicBlockGraph -> LLVM.OP list

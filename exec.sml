@@ -62,7 +62,7 @@ fun optimizeMethod (name,ty,args,code) = let
   in
     (name,ty,args,((BB.graph2code o (Optimize.optimize optimizeLevel)) bbGraph))
   end
-fun method2dot (title,_,_,code) = DOT.toDot title (Optimize.optimize optimizeLevel (BB.createBBGraph code))
+fun method2dot (title,_,_,code) = DOT.toDot title (Optimize.optimize optimizeLevel (SSA.completeSSA (BB.createBBGraph code)))
 val _ = if shouldDot
   then print (concat (map method2dot program))
   else print (LLVM.printProgram (map optimizeMethod program))

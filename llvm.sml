@@ -152,7 +152,7 @@ struct
     | printOP (Alloca (res,ty)) =  h_printROP res "alloca" ty []
     | printOP (Call (res,ty,name,args)) =  concat [(h_printROP res "call" ty [])," @",name,"(",(combArgs (map (fn x=> concat["i32 ",printArg x]) args)),")"]
     | printOP (Raw str) = str
-    | printOP (Phi (res,args)) =  concat ["%",res," phi",(combArgs (map (fn (x,y) => concat["[ ",printArg x,",",printArg y,"]"]) args))]
+    | printOP (Phi (res,args)) =  concat ["%",res," = phi",(combArgs (map (fn (x,y) => concat["[ ",printArg x,",",printArg y,"]"]) args))]
 
   fun printMethod (name,rtype,args,ops) = let
       val showArgs = foldr (
@@ -171,5 +171,9 @@ struct
       , (foldl (fn (a,b) => concat [a,"\n",b]) "" (map printMethod program))
       , "declare i32 @printf(i8*, ...)\n"
     ]
+
+  fun insertAfterLabel code new_code = (case code of
+      (DefnLabel l)::rest => ((DefnLabel l)::new_code@rest)
+    | _ => new_code@code)
 
 end

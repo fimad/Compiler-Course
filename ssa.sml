@@ -101,44 +101,84 @@ structure PhiMap = RedBlackMapFn (struct
 fun resolvePhi bbg = let
     val dfmap = calcDF bbg
     val vars = BB.variables bbg
+    val new_bbg = ref bbg
     fun def bb = map #1 (BB.def bb)
-    fun real_def bb = List.filter BB.isRealVariable (map #1 (BB.def bb))
+
+    fun var_lookup m x = (case VarMap.find (m,x) of
+                SOME lst => lst
+                | NONE => [])
+
+    (*maps from variables to the nodes that 'def them*)
     val defsites = ref VarMap.empty
     (* fill up defsites yo *)
     val _ = map (fn n => map (fn v =>
             let
-              val lst = (case VarMap.find (!defsites,v) of
-                SOME lst => lst
-                | NONE => [])
+              val lst = var_lookup (!defsites) v
               val _ = (defsites := VarMap.insert (!defsites,v,(n::lst)))
             in
               lst
             end
-          (*) (real_def n)) (BB.to_list bbg)*)
           ) (def n)) (BB.to_list bbg)
-    val new_bbg = ref bbg
-    val phisites = ref PhiMap.empty
-    fun forvar a [] = ()
-      | forvar a (n::w) = let
-          val df_n = BB.map_lookup dfmap n
-        in
-          forvar a (w@(List.concat(
-            map (fn y => 
-                if PhiMap.find (!phisites,(a,y)) <> NONE then
-                  let
-                    val _ = (new_bbg := BB.replace (!new_bbg) (BB.set_code y ((LLVM.Phi (a,[]))::(BB.code y))))
-                    val _ = (phisites := PhiMap.insert (!phisites,(a,y),true))
+    
+    (*
+    val _ = print "\nVARS:"
+    val _ = map (fn x => print (concat ["\n",x,"\n"])) vars
+    val _ = print "\nEND VARS:"
+    *)
+
+    (*place phi functions in new_bbg for variable x*)
+    fun variable_phi x = let
+        val inserted = ref []
+        val added = ref (var_lookup (!defsites) x)
+        val worklist = ref (!added)
+        (*
+        val _ = print (concat ["For var: ",x,"\n"])
+        val _ = print (concat (map (fn b => concat ["\t",(Int.toString o BB.bb2id) b,"\n"]) (!added)))
+        val _ = print (concat ["Done!\n"])
+        *)
+        fun step () = (case (!worklist) of
+            [] => ()
+          | (b::bs) => let
+              val _ = (worklist := bs) (*remove b from worklist*)
+              val _ = map (*for each d in the df of b*)
+                (fn d => if not (BB.list_has (!inserted) d) then let
+                    (*mark that we've inserted a phi function here*)
+                    val _ = (inserted := d::(!inserted))
+                    (*add d to the added and work list if we haven't seen it before*)
+                    val _ = if not (BB.list_has (!added) d) then let
+                      val _ = (added := d::(!added)) 
+                      val _ = (worklist := d::(!worklist))
+                      in () end else ()
+                    (*actually insert a phi function*)
+                    fun var v = concat ["%",v]
+                    val phi = LLVM.Phi (x,(map (
+                            fn p => let
+                                val (bbg,label) = BB.get_label (!new_bbg) p
+                                val _ = (new_bbg := bbg)
+                              in
+                                (LLVM.Variable x,LLVM.Variable label)
+                              end
+                            ) (BB.pred bbg d)))
+                    val d = BB.refresh (!new_bbg) d (*make sure we have a fresh copy of d*)
+                    (*val _ = (new_bbg := BB.replace (!new_bbg) (BB.set_code d ((LLVM.Phi (x,[]))::(BB.code d)))) *)
+                    val _ = (new_bbg := BB.replace (!new_bbg) (BB.set_code d (LLVM.insertAfterLabel (BB.code d) [phi])))
                   in
-                    if (List.filter (fn x => x=a) (real_def y)) <> [] then [y] else []
+                    ()
                   end
-                else []
-            ) df_n
-          )))
-        end
-    val _ = map (fn v => let val SOME w = VarMap.find (!defsites,v) in forvar v w end) vars
+                 else ()
+                )
+                (BB.map_lookup dfmap b) (*each node in the df of b*)
+            in
+              step ()
+            end
+        )
+      in
+        step ()
+      end
+    (*actually place each phi for each var*)
+    val _ = map variable_phi vars 
   in
-    !new_bbg
-    (* TODO add actual parameters to the phi functions, right now they are bare as fuck *)
+    (!new_bbg)
   end
 
 fun renameVariables bbg = let
@@ -146,7 +186,7 @@ fun renameVariables bbg = let
     bbg
   end
 
-fun completeSSA bbg = renameVariables (resolvePhi bbg)
+fun completeSSA bbg = resolvePhi bbg
 
 end
 
