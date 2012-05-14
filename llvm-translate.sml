@@ -294,7 +294,7 @@ struct
   fun compile ast = let
     val (mainBody,vres) = evalArg ast
     val res = case vres of
-        (LLVM.Variable v) => concat ["%",v]
+        (LLVM.Variable v) => v
       | (LLVM.Num i) => Int.toString(i)
       | (LLVM.Label v) => concat ["label %",v]
     val l = makenextvar ()
@@ -303,7 +303,8 @@ struct
         , LLVM.i32
         , []
         , mainBody@[
-              LLVM.Raw (concat["%",l," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.str, i32 0, i32 0), i32 ",res,")"])
+              (*LLVM.Raw (concat["%",l," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.str, i32 0, i32 0), i32 ",res,")"])*)
+              LLVM.Print (l,vres)
             , LLVM.Ret (LLVM.i32,vres)
           ]
       )

@@ -31,6 +31,7 @@ struct
     | Ashr of Result*Type*Arg*Arg
     | Xor of Result*Type*Arg*Arg
     | Call of Result*Type*string*(Arg list)
+    | Print of Result*Arg
     | Raw of string
     | Phi of Result*((Arg*Arg) list) (* Needs to be value/variabe,Label(of the corresponding block) *)
 
@@ -151,15 +152,16 @@ struct
     | printOP (Ret (ty,a)) =  h_printOP "ret" ty [a]
     | printOP (Alloca (res,ty)) =  h_printROP res "alloca" ty []
     | printOP (Call (res,ty,name,args)) =  concat [(h_printROP res "call" ty [])," @",name,"(",(combArgs (map (fn x=> concat["i32 ",printArg x]) args)),")"]
+    | printOP (Print (res,arg)) = concat["%",res," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.str, i32 0, i32 0), i32 ",(printArg arg),")"]
     | printOP (Raw str) = str
-    | printOP (Phi (res,args)) =  concat ["%",res," = phi",(combArgs (map (fn (x,y) => concat["[ ",printArg x,",",printArg y,"]"]) args))]
+    | printOP (Phi (res,args)) =  concat ["%",res," = phi i32 ",(combArgs (map (fn (x,y) => concat["[ ",printArg x,",",printArg y,"]"]) args))]
 
   fun printMethod (name,rtype,args,ops) = let
       val showArgs = foldr (
           fn ((var,ty),rst) => 
             case rst of
-            "" => concat [(printType ty), " %", var]
-            | _ => concat [rst, ", ", (printType ty), " %", var]
+            "" => concat [(printType ty), " %", var,"__0"]
+            | _ => concat [rst, ", ", (printType ty), " %", var,"__0"]
         ) "";
       val showOps = concat o map (fn x => concat ["\t",(printOP x), "\n"]);
     in

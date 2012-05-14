@@ -143,6 +143,8 @@ struct
         | op2def (code as (LLVM.Ashr (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Xor (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Call (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Phi (s,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Print (s,_))) =  [(s,code)]
         | op2def _ = []
     in
       List.concat (map op2def (code bb))
@@ -173,6 +175,7 @@ struct
         | op2use (code as (LLVM.Br (a))) = arg2use code a
         | op2use (code as (LLVM.CndBr (a,_,_))) = arg2use code a
         | op2use (code as (LLVM.Ret (_,a))) = arg2use code a
+        | op2use (code as (LLVM.Print (_,a))) = arg2use code a
         | op2use (code as (LLVM.And (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Or (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Ashr (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)

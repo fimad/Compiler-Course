@@ -126,6 +126,16 @@ fun resolvePhi bbg = let
     val _ = print "\nEND VARS:"
     *)
 
+    val (in_map,out_map) = BB.in_out bbg
+    (* if more than one predecessor of b has x as an out variable *)
+    fun b_needs_phi_for_x b x = let
+        val l = length (List.filter (
+              fn p => List.exists (fn (v,_) => v = x) (BB.map_lookup out_map p)
+            ) (BB.pred bbg b))
+        (*val _ = print (concat ["var: ",x," , bb:",(Int.toString (BB.bb2id b)),", length: ",(Int.toString l),"\n"])*)
+      in l > 1
+      end
+
     (*place phi functions in new_bbg for variable x*)
     fun variable_phi x = let
         val inserted = ref []
@@ -141,7 +151,7 @@ fun resolvePhi bbg = let
           | (b::bs) => let
               val _ = (worklist := bs) (*remove b from worklist*)
               val _ = map (*for each d in the df of b*)
-                (fn d => if not (BB.list_has (!inserted) d) then let
+                (fn d => if (not (BB.list_has (!inserted) d) andalso b_needs_phi_for_x d x) then let
                     (*mark that we've inserted a phi function here*)
                     val _ = (inserted := d::(!inserted))
                     (*add d to the added and work list if we haven't seen it before*)
@@ -182,11 +192,101 @@ fun resolvePhi bbg = let
   end
 
 fun renameVariables bbg = let
+    (* calculate dominator tree ? *)
+    val dmap = calcDom bbg
+    val dfmap = calcDF bbg
+    val vars = BB.variables bbg
+    val new_bbg = ref bbg
+
+    fun linear_map f [] = []
+      | linear_map f (x::xs) = (f x)::(linear_map f xs)
+
+    fun rename_var x = let
+        val next_x_sub = ref 0;
+        fun next_x () = let
+          val _ = (next_x_sub := (!next_x_sub) + 1) (*increment the subscript*)
+          val var = (concat [x,"__",(Int.toString (!next_x_sub))])
+          in var end
+        fun current_x () = let
+          val var = (concat [x,"__",(Int.toString (!next_x_sub))])
+          in var end
+
+        fun rename_bb bb last_x =
+          let
+            (* val _ = print (concat ["Working on: ",x," in: ",(Int.toString (BB.bb2id bb)),"\n"]) *)
+            val bb = BB.refresh (!new_bbg) bb (*make sure we have a fresh copy of bb*)
+            val my_last_x = ref last_x
+            val new_code = linear_map ( (* performs the equivalent of the first for loop in the sample code *)
+                  fn line => let
+                      (* save the current_x so that setting the result doesn't accidently update current_x before the arg can look at it *)
+                      val current_x = (!my_last_x)
+                      fun change_result r = if r = x then
+                          let 
+                            val _ = (my_last_x := next_x ())
+                          in (!my_last_x) end
+                        else r
+                      fun change_arg (LLVM.Variable v) = if v = x then (LLVM.Variable current_x) else (LLVM.Variable v)
+                        | change_arg a = a
+                    in
+                      case line of
+                          (LLVM.Load (r,t,a1)) => LLVM.Load ((change_result r),t,(change_arg a1))
+                        | (LLVM.Store (t,a1,a2)) => LLVM.Store (t,(change_arg a1),(change_arg a2))
+                        | (LLVM.Add (r,t,a1,a2)) => LLVM.Add ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.Sub (r,t,a1,a2)) => LLVM.Sub ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.Mul (r,t,a1,a2)) => LLVM.Mul ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.Div (r,t,a1,a2)) => LLVM.Div ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.CmpEq (r,t,a1,a2)) => LLVM.CmpEq ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.CmpNe (r,t,a1,a2)) => LLVM.CmpNe ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.CmpGt (r,t,a1,a2)) => LLVM.CmpGt ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.CmpGe (r,t,a1,a2)) => LLVM.CmpGe ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.CmpLt (r,t,a1,a2)) => LLVM.CmpLt ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.CmpLe (r,t,a1,a2)) => LLVM.CmpLe ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.CndBr (a1,a2,a3)) => LLVM.CndBr ((change_arg a1),(change_arg a2),(change_arg a3))
+                        | (LLVM.Ret (t,a1)) => LLVM.Ret (t,(change_arg a1))
+                        | (LLVM.And (r,t,a1,a2)) => LLVM.And ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.Or (r,t,a1,a2)) => LLVM.Or ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.Alloca (r,t)) => LLVM.Alloca ((change_result r),t)
+                        | (LLVM.Ashr (r,t,a1,a2)) => LLVM.Ashr ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.Xor (r,t,a1,a2)) => LLVM.Xor ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.Call (r,t,func,args)) => LLVM.Call ((change_result r),t,func,(map change_arg args))
+                        | (LLVM.Print (r,arg)) => LLVM.Print ((change_result r), (change_arg arg))
+                        | (LLVM.Phi (r,args)) => LLVM.Phi ((change_result r), args)
+                        | x => x (* default: don't change anything *)
+                    end
+                ) (BB.code bb)
+            (* set bb's code to new_code *)
+            val _ = (new_bbg := BB.replace (!new_bbg) (BB.set_code bb new_code))
+    
+            (*set the content of each of the successor's phi instructions*)
+            val _ = linear_map (fn s => let
+                  val s = BB.refresh (!new_bbg) s
+                  val (_,my_label) = BB.get_label (!new_bbg) bb
+                  val new_code = map (
+                      fn (LLVM.Phi (r,args)) =>
+                          LLVM.Phi (r,map (fn (v as LLVM.Variable v_str,(l as LLVM.Variable l_str)) => ((if x = v_str andalso my_label = l_str then LLVM.Variable (!my_last_x) else v),l)) args)
+                       | x => x
+                    ) (BB.code s)
+                  val _ = (new_bbg := BB.replace (!new_bbg) (BB.set_code s new_code))
+                  in () end
+                ) (BB.succ (!new_bbg) bb)
+
+            (* recurse down the dominator tree *)
+            val children = List.filter (fn c => (BB.bb_equal (idom (!new_bbg) c) bb) andalso not (BB.bb_equal bb c)) (BB.to_list (!new_bbg))
+            val _ = map (fn c => rename_bb c (!my_last_x)) (children)
+          in
+            ()
+          end
+      in
+        rename_bb (BB.root (!new_bbg)) (current_x ())
+      end
+
+    (* rename each variable *)
+    val _ = linear_map rename_var vars
   in
-    bbg
+    (!new_bbg)
   end
 
-fun completeSSA bbg = resolvePhi bbg
+fun completeSSA bbg = renameVariables (resolvePhi bbg)
 
 end
 
