@@ -49,7 +49,7 @@ struct
             | (LLVM.Call (_,a1,a2,a3)) => LLVM.Call (newRes,a1,a2,a3)
             | (LLVM.Phi (_,a1)) => LLVM.Phi (newRes,a1)
             | any => any)]
-        | setResult_help (x::xs) = setResult_help xs
+        | setResult_help (x::xs) = x::(setResult_help xs)
     in
       (newRes, setResult_help code)
     end
@@ -79,8 +79,8 @@ struct
   (*
       val l = makenextvar ()
       val code = [LLVM.Load (l,LLVM.pi32,(LLVM.Variable x))]
-      *)
       val l = makenextvar ()
+      *)
       (* val code = [LLVM.Add (l,LLVM.i32, (LLVM.Num 0), (LLVM.Variable x))] *)
       val code = []
     in
