@@ -116,8 +116,9 @@ struct
           val label_string = LLVM_Translate.makenextlabel ()
           val label_code = LLVM.DefnLabel label_string
           val new_code = label_code::code
+          val new_bbg = foldl (fn (p as (_,code),new_bbg)=>replace new_bbg (set_code p (code@[LLVM.Br (LLVM.Label label_string)]))) bbg (pred bbg bb)
         in
-          (replace bbg (set_code bb new_code), label_string)
+          (replace new_bbg (set_code bb new_code), label_string)
         end
      end
   
