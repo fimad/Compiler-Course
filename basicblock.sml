@@ -146,6 +146,7 @@ struct
         | op2def (code as (LLVM.Call (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Phi (s,_))) =  [(s,code)]
         | op2def (code as (LLVM.Print (s,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Alias ((LLVM.Variable s),_))) =  [(s,code)]
         | op2def _ = []
     in
       List.concat (map op2def (code bb))
@@ -182,6 +183,7 @@ struct
         | op2use (code as (LLVM.Ashr (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Xor (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Call (_,_,_,args))) = List.concat (map (arg2use code) args)
+        | op2use (code as (LLVM.Alias (_,a))) = arg2use code a
         | op2use _ = []
       fun equals ((a,_),(b,_)) = a = b
     in

@@ -251,6 +251,7 @@ fun renameVariables bbg = let
                         | (LLVM.Call (r,t,func,args)) => LLVM.Call ((change_result r),t,func,(map change_arg args))
                         | (LLVM.Print (r,arg)) => LLVM.Print ((change_result r), (change_arg arg))
                         | (LLVM.Phi (r,args)) => LLVM.Phi ((change_result r), args)
+                        | (LLVM.Alias ((LLVM.Variable r),a)) => LLVM.Alias (LLVM.Variable (change_result r), (change_arg a))
                         | x => x (* default: don't change anything *)
                     end
                 ) (BB.code bb)
@@ -286,7 +287,53 @@ fun renameVariables bbg = let
     (!new_bbg)
   end
 
-fun completeSSA bbg = renameVariables (resolvePhi bbg)
+fun removeAliases bbg = let
+    fun find_aliases [] = []
+      | find_aliases ((LLVM.Alias ((LLVM.Variable a),value))::xs) = (a,value)::(find_aliases xs)
+      | find_aliases (_::xs) = find_aliases xs
+    val aliases = List.concat (map (find_aliases o BB.code) (BB.to_list bbg))
+  
+    (* replaces a specific LLVM.Arg if it is an alias with it's value *)
+    fun replaceArg [] (arg as (LLVM.Variable v)) = arg
+      | replaceArg ((a,new_v)::xs) (arg as (LLVM.Variable v)) = if v = a then new_v else replaceArg xs arg
+      | replaceArg _ arg = arg
+    val replaceArg = replaceArg aliases (*presupply the list of aliases*)
+  
+    (* replaces arguments in opcodes if they have been aliased *)
+    fun replaceInOp (LLVM.Load (r,t,a1)) = LLVM.Load (r,t,replaceArg a1)
+      | replaceInOp (LLVM.Store (t,a1,a2)) = LLVM.Store (t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.Add (r,t,a1,a2)) = LLVM.Add (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.Sub (r,t,a1,a2)) = LLVM.Sub (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.Mul (r,t,a1,a2)) = LLVM.Mul (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.Div (r,t,a1,a2)) = LLVM.Div (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.CmpEq (r,t,a1,a2)) = LLVM.CmpEq (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.CmpNe (r,t,a1,a2)) = LLVM.CmpNe (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.CmpGt (r,t,a1,a2)) = LLVM.CmpGt (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.CmpGe (r,t,a1,a2)) = LLVM.CmpGe (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.CmpLt (r,t,a1,a2)) = LLVM.CmpLt (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.CmpLe (r,t,a1,a2)) = LLVM.CmpLe (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.Br (a1)) = LLVM.Br (replaceArg a1)
+      | replaceInOp (LLVM.CndBr (a1,a2,a3)) = LLVM.CndBr ((replaceArg a1),(replaceArg a2),(replaceArg a3))
+      | replaceInOp (LLVM.Ret (t,a1)) = LLVM.Ret (t,(replaceArg a1))
+      | replaceInOp (LLVM.And (r,t,a1,a2)) = LLVM.And (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.Or (r,t,a1,a2)) = LLVM.Or (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.Ashr (r,t,a1,a2)) = LLVM.Ashr (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.Xor (r,t,a1,a2)) = LLVM.Xor (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp (LLVM.Print (r,a1)) = LLVM.Print (r,(replaceArg a1))
+      | replaceInOp (LLVM.Call (r,t,func,args)) = LLVM.Call (r,t,func,(map replaceArg args))
+      | replaceInOp (LLVM.Phi (r,args)) = LLVM.Phi (r,(map (fn (v,l)=>((replaceArg v),l)) args))
+      | replaceInOp x = x
+
+    (* remove all alias op codes from a code list *)
+    fun rmAliasOps [] = []
+      | rmAliasOps ((LLVM.Alias _)::xs) = rmAliasOps xs
+      | rmAliasOps (x::xs) = x::(rmAliasOps xs)
+  in
+    foldl (fn (bb,bbg) => BB.replace bbg (BB.set_code bb (((map replaceInOp) o rmAliasOps o BB.code) bb))) bbg (BB.to_list bbg)
+    (* bbg *)
+  end
+
+fun completeSSA bbg = (removeAliases o renameVariables o resolvePhi) bbg
 
 end
 

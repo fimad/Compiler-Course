@@ -10,6 +10,7 @@ struct
     | Label of string
   datatype OP = 
     DefnLabel of string
+    | Alias of Arg*Arg (*Not an actual byte code, but is used in replacing variables with constant expressions*)
     | Load of Result*Type*Arg
     | Store of Type*Arg*Arg
     | Add of Result*Type*Arg*Arg
@@ -126,6 +127,8 @@ struct
           | replOP (Ashr (res,ty,a1,a2)) = Ashr (res,ty,(replArg a1),(replArg a2))
           | replOP (Xor (res,ty,a1,a2)) = Xor (res,ty,(replArg a1),(replArg a2))
           | replOP (Call (res,ty,fname,args)) = Call (res,ty,fname,(map replArg args))
+          | replOP (Print (res,arg)) = Print (res,(replArg arg))
+          | replOP (Alias (a1,a2)) = Alias ((replArg a1),(replArg a2))
           | replOP code = code
         val new_code = map replOP code
       in replaceVar xs new_code end
@@ -155,6 +158,7 @@ struct
     | printOP (Print (res,arg)) = concat["%",res," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.str, i32 0, i32 0), i32 ",(printArg arg),")"]
     | printOP (Raw str) = str
     | printOP (Phi (res,args)) =  concat ["%",res," = phi i32 ",(combArgs (map (fn (x,y) => concat["[ ",printArg x,",",printArg y,"]"]) args))]
+    | printOP (Alias (a1,a2)) = concat ["alias ",(printArg a1)," = ",(printArg a2)]
 
   fun printMethod (name,rtype,args,ops) = let
       val showArgs = foldr (

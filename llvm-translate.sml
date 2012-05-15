@@ -48,6 +48,7 @@ struct
             | (LLVM.Xor (_,a1,a2,a3)) => LLVM.Xor (newRes,a1,a2,a3)
             | (LLVM.Call (_,a1,a2,a3)) => LLVM.Call (newRes,a1,a2,a3)
             | (LLVM.Phi (_,a1)) => LLVM.Phi (newRes,a1)
+            | (LLVM.Alias (_,a)) => LLVM.Alias ((LLVM.Variable newRes),a)
             | any => any)]
         | setResult_help (x::xs) = x::(setResult_help xs)
     in
@@ -65,13 +66,15 @@ struct
   and setVariable result exp = 
     (case exp of
       (*needed for assign and let*)
-      (Ast.Var x) => (result, [LLVM.Add (result,LLVM.i32, (LLVM.Num 0), (LLVM.Variable x))])
+      (* (Ast.Var x) => (result, [LLVM.Add (result,LLVM.i32, (LLVM.Num 0), (LLVM.Variable x))]) *)
+      (Ast.Var x) => (result, [LLVM.Alias ((LLVM.Variable result),(LLVM.Variable x))])
       (*needed for everything eles*)
       | exp => setResult result (translate exp))
 
   and translate (Ast.Num (i)) = let
       val l = makenextvar ()
-      val code = [LLVM.Add (l,LLVM.i32, (LLVM.Num 0), (LLVM.Num i))]
+      (*val code = [LLVM.Add (l,LLVM.i32, (LLVM.Num 0), (LLVM.Num i))]*)
+      val code = [LLVM.Alias ((LLVM.Variable l), (LLVM.Num i))]
     in
       (l,code)
     end
