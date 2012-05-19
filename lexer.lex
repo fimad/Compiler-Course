@@ -27,6 +27,7 @@ ws = [\ \t];
 \n       => (pos := (!pos) + 1; lex());
 {ws}+    => (lex());
 "print"  => (Tokens.PRINT(!pos,!pos));
+"dim"    => (Tokens.DIM(!pos,!pos));
 "and"    => (Tokens.AND(!pos,!pos));
 "or"     => (Tokens.OR(!pos,!pos));
 "for"    => (Tokens.FOR(!pos,!pos));

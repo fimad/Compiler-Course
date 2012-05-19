@@ -11,6 +11,7 @@ structure Ast = Ast
 %pos int
 %eop EOF
 
+%left DIM
 %left PRINT
 %left SEMICOLON
 %left NEG
@@ -29,6 +30,7 @@ structure Ast = Ast
     | FOR | TO | BY | DO | SEMICOLON
     | EMPTY_ARRAY | START_ARRAY | END_ARRAY | POUND
     | PRINT
+    | DIM
     | EOF
 %nonterm LETDEF of Ast.ast
        | EXP of Ast.ast
@@ -54,6 +56,7 @@ DO_BLOCK : DO EXPLIST END         (Ast.Block(EXPLIST))
 EXP : TERM                        (TERM)
     (*digit arith*)
     | PRINT EXP                   (Ast.Print(EXP))
+    | DIM LPAREN NUM COMMA ID RPAREN                   (Ast.Dim(NUM,ID))
     | EXP PLUS EXP                (Ast.Plus(EXP1,EXP2))
     | EXP MINUS EXP               (Ast.Minus(EXP1,EXP2))
     | EXP MULT EXP                (Ast.Mult(EXP1,EXP2))
@@ -71,7 +74,7 @@ EXP : TERM                        (TERM)
     | ID ASSIGN EXP               (Ast.Assign(ID,EXP))
     | ID ARRAY_INDEX ASSIGN EXP   (Ast.AssignArray(ID,ARRAY_INDEX,EXP))
     | IF EXP THEN STATEMENT ELSE STATEMENT   (Ast.If(EXP,STATEMENT1,STATEMENT2))
-    | FOR LPAREN EXP SEMICOLON EXP SEMICOLON EXP RPAREN STATEMENT IN STATEMENT   (Ast.For(EXP1,EXP2,EXP3,STATEMENT1,STATEMENT2))
+    | FOR LPAREN EXP SEMICOLON EXP SEMICOLON EXP RPAREN STATEMENT   (Ast.For(EXP1,EXP2,EXP3,STATEMENT1))
 
 TERM : ID                         (Ast.Var(ID))
      | ID ARRAY_INDEX             (Ast.ArrayIndex(ID,ARRAY_INDEX))

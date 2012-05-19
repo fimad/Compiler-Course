@@ -68,6 +68,12 @@ struct
   and getTypeForVar [] var = raise (TranslationError (concat ["Unbound variable '",var,"'"]))
     | getTypeForVar ((x,t)::scope) var = if x = var then t else getTypeForVar scope var
 
+  and getLLVMTypeForVar scope var = let
+      fun type2llvm Int =  LLVM.i32
+        | type2llvm (Array []) = LLVM.i32
+        | type2llvm (Array (d::dims)) = LLVM.array (d,(type2llvm (Array dims)))
+    in type2llvm (getTypeForVar scope var) end
+
   and llvmTypeForDim ty [] = ty
     | llvmTypeForDim ty (d::im) = LLVM.array (d,llvmTypeForDim ty im)
 
@@ -122,6 +128,14 @@ struct
       val (code,res) = evalArg scope ast
     in
       (pres,code@[LLVM.Print (pres,res)])
+    end
+  | translate (Ast.Dim (level,id)) scope = let
+      val i = makenextvar ()
+      fun levelDimOfType 0 (LLVM.array (dim,ty)) = dim
+        | levelDimOfType level (LLVM.array (dim,ty)) = levelDimOfType (level-1) ty
+        | levelDimOfType _ _ = 0
+    in
+        (i, [LLVM.Alias (LLVM.Variable i, LLVM.Num (levelDimOfType level (getLLVMTypeForVar scope id)))])
     end
   | translate (Ast.Block asts) scope = let
       val i = makenextvar ()
@@ -300,7 +314,7 @@ struct
       (l,code@[LLVM.Call (l,LLVM.i32,v,args)])
     end
   | translate (Ast.Apply _) scope =  raise (TranslationError "Can only apply on variables")
-  | translate (Ast.For (init_exp,cond_exp,step_exp,doexp,inexp)) scope = let
+  | translate (Ast.For (init_exp,cond_exp,step_exp,doexp)) scope = let
       val cnd_label = makenextlabel ()
       val loop_start_label = makenextlabel ()
       val loop_end_label = makenextlabel ()
@@ -308,9 +322,9 @@ struct
       val (cond_code,cond_res) = evalArg scope cond_exp
       val (step_code,step_res) = evalArg scope step_exp
       val (do_code,do_res) = evalArg scope doexp
-      val (in_res,in_code) = translate inexp scope
+      val res = makenextvar()
     in
-      (in_res, init_code@[
+      (res, init_code@[
           LLVM.Br (LLVM.Label cnd_label)
         , LLVM.DefnLabel cnd_label
         ]@cond_code@[
@@ -319,7 +333,9 @@ struct
         ]@do_code@step_code@[
           LLVM.Br(LLVM.Label(cnd_label))
         , LLVM.DefnLabel(loop_end_label)
-        ]@in_code)
+        ]@[
+          LLVM.Alias (LLVM.Variable res,LLVM.Num 0) (*For loops have no "value"*)
+        ])
     end
   | translate (Ast.If (bexp,texp,fexp)) scope = let
       val [l_true,l_false,l_out] = map makenextlabel [(),(),()]

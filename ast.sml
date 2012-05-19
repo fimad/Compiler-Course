@@ -6,6 +6,7 @@ sig
    * ast is a datatype encapsulating the abstract syntax of the language e *)
   datatype ast
     = Var of string
+    | Dim of int*string (*statically gets the int level dimension of an array*) (*0 for non arrays*)
     | Block of ast list
     | Print of ast
     | Num of int
@@ -29,7 +30,7 @@ sig
     | MoreEq of ast*ast
     | Apply of ast*(ast list)
     | If of ast*ast*ast
-    | For of ast*ast*ast*ast*ast
+    | For of ast*ast*ast*ast
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
     | AssignArray of string*(ast list)*ast
     | Let of string*ast*ast
@@ -63,6 +64,7 @@ struct
   datatype ast
     = Var of string
     | Num of int
+    | Dim of int*string (*statically gets the int level dimension of an array*) (*0 for non arrays*)
     | Block of ast list
     | Print of ast
     | EmptyArray of int list
@@ -83,7 +85,7 @@ struct
     | MoreEq of ast*ast
     | Apply of ast*(ast list)
     | If of ast*ast*ast
-    | For of ast*ast*ast*ast*ast
+    | For of ast*ast*ast*ast
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
     | AssignArray of string*(ast list)*ast
     | Let of string*ast*ast

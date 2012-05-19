@@ -1,9 +1,10 @@
-let a = []#5#5 in
+let a = []#5#10 in
 let x = 0 in
-for x to 4 by 1
-  let y = 0 in
-  for y to 4 by 1
-    a[x][y] := x + y
-  in 0
-in
-  print a[2][3]
+do
+  for(x:=0; x<dim(0,a); x:=x+1)
+    let y = 0 in
+    for(y:=0; y<dim(1,a); y:=y+1)
+      a[x][y] := x + y
+  ;
+  print a[dim(0,a)-1][dim(1,a)-1]
+end

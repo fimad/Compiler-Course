@@ -1,8 +1,6 @@
 let a = [[1,2,3],[4,5,6],[7,8,9]] in
 let x = 0 in
-for x to 3 by 1
+for(x:=0; x<dim(0,a); x:=x+1)
   let y = 0 in
-  for y to 3 by 1
+  for(y:=0; y<dim(1,a); y:=y+1)
     print a[x][y]
-  in 0
-in 0

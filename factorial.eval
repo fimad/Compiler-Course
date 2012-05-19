@@ -1,8 +1,10 @@
 fun factorial(max) =
   let prod = 1 in
   let i = max in
-  for(i:=max; i>0; i:=i-1)
-    prod := prod * i
-  in prod
+  do
+    for(i:=max; i>0; i:=i-1)
+      prod := prod * i;
+    prod
+  end
 in
   print factorial(10)
