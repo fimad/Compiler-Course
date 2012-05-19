@@ -6,7 +6,12 @@ sig
    * ast is a datatype encapsulating the abstract syntax of the language e *)
   datatype ast
     = Var of string
+    | Block of ast list
+    | Print of ast
     | Num of int
+    | EmptyArray of int list
+    | Array of ast list
+    | ArrayIndex of string*(ast list)
     (*digit arith*)
     | Plus of ast*ast
     | Minus of ast*ast
@@ -23,9 +28,9 @@ sig
     | If of ast*ast*ast
     | For of string*ast*ast*ast*ast
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
+    | AssignArray of string*(ast list)*ast
     | Let of string*ast*ast
-    | LetSta of string*(string list)*ast*ast
-    | LetDyn of string*(string list)*ast*ast
+    | Fun of string*(string list)*ast*ast
   (*
    * enval is a datatype that covers the possible values that can be stored in the
    * environment. As of now this includes, the various functions and integers
@@ -55,6 +60,11 @@ struct
   datatype ast
     = Var of string
     | Num of int
+    | Block of ast list
+    | Print of ast
+    | EmptyArray of int list
+    | Array of ast list
+    | ArrayIndex of string*(ast list)
     | Plus of ast*ast
     | Minus of ast*ast
     | Div of ast*ast
@@ -69,9 +79,9 @@ struct
     | If of ast*ast*ast
     | For of string*ast*ast*ast*ast
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
+    | AssignArray of string*(ast list)*ast
     | Let of string*ast*ast
-    | LetSta of string*(string list)*ast*ast
-    | LetDyn of string*(string list)*ast*ast
+    | Fun of string*(string list)*ast*ast
 
   datatype enval
     = Val of int
@@ -165,15 +175,8 @@ and showTree x (Ast.Var str) = indent x (concat ["Var(",str,")"])
       val _ = showTree (x+1) e1
       val _ = showTree (x+1) e2
     in () end
-  | showTree x (Ast.LetSta (f,y,e1,e2)) = let
-      val _ = indent x (concat ["LetSta( ",f,"("])
-      val _ = showStringList (x+1) y
-      val _ = indent x ") )"
-      val _ = showTree (x+1) e1
-      val _ = showTree (x+1) e2
-    in () end
-  | showTree x (Ast.LetDyn (f,y,e1,e2)) = let
-      val _ = indent x (concat ["LetDyn( ",f,"("])
+  | showTree x (Ast.Fun (f,y,e1,e2)) = let
+      val _ = indent x (concat ["Fun( ",f,"("])
       val _ = showStringList (x+1) y
       val _ = indent x ") )"
       val _ = showTree (x+1) e1

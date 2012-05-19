@@ -1,7 +1,7 @@
-letdyn factorial(max) =
+fun factorial(max) =
   let prod = 1 in
   let i = max in
-  for i to 0 by ~1 do
+  for i to 0 by ~1
     prod := prod * i
   in prod
 in

@@ -3,6 +3,9 @@
 structure LLVM_Translate = 
 struct
 
+  datatype DataType = Int | Array of int list
+  type Scope = string*DataType
+
   val curlabel = ref 1
   fun nextvar () = concat ["_",Int.toString(!curlabel)]
   fun makenextvar () = let
@@ -43,7 +46,7 @@ struct
             | (LLVM.CmpLe (_,a1,a2,a3)) => LLVM.CmpLe (newRes,a1,a2,a3)
             | (LLVM.And (_,a1,a2,a3)) => LLVM.And (newRes,a1,a2,a3)
             | (LLVM.Or (_,a1,a2,a3)) => LLVM.Or (newRes,a1,a2,a3)
-            | (LLVM.Alloca (_,a1)) => LLVM.Alloca (newRes,a1)
+            | (LLVM.Alloca (_,a1,num)) => LLVM.Alloca (newRes,a1,num)
             | (LLVM.Ashr (_,a1,a2,a3)) => LLVM.Ashr (newRes,a1,a2,a3)
             | (LLVM.Xor (_,a1,a2,a3)) => LLVM.Xor (newRes,a1,a2,a3)
             | (LLVM.Call (_,a1,a2,a3)) => LLVM.Call (newRes,a1,a2,a3)
@@ -55,127 +58,236 @@ struct
       (newRes, setResult_help code)
     end
 
-  fun evalArg (Ast.Num i) = ([],(LLVM.Num i))
-    | evalArg expr = let
-        val (res,code) = translate expr
+  fun evalArg scope (Ast.Num i) = ([],(LLVM.Num i))
+    | evalArg scope expr = let
+        val (res,code) = translate expr scope
       in
         (code, (LLVM.Variable res))
       end
 
+  and getTypeForVar [] var = raise (TranslationError (concat ["Unbound variable '",var,"'"]))
+    | getTypeForVar ((x,t)::scope) var = if x = var then t else getTypeForVar scope var
+
+  and llvmTypeForDim ty [] = ty
+    | llvmTypeForDim ty (d::im) = LLVM.array (d,llvmTypeForDim ty im)
+
+  and calculateArrayIndex ptr ty [] [] scope = (ptr,[],ty)
+    | calculateArrayIndex ptr ty [] _ scope = raise (TranslationError (concat ["not enuff indices... yo.. in '",ptr,"'"]))
+    | calculateArrayIndex ptr ty _ [] scope = raise (TranslationError (concat ["Indices into array '",ptr,"' have more dimensions than definition."]))
+    | calculateArrayIndex ptr ty (i::indices) (d::dims) scope = let
+        val (i_code,i_res) = evalArg scope i 
+        val next_ptr = makenextvar ()
+        val (res_ptr,next_code,res_ty) = (case ty of
+              LLVM.array (_,sub_ty) => calculateArrayIndex next_ptr sub_ty indices dims scope
+            | _ => (next_ptr,[],ty)
+          )
+        val code = i_code@[LLVM.GetElementPtr (next_ptr,LLVM.ptr ty,LLVM.Variable ptr,i_res)]@next_code
+      in
+        (res_ptr,code,res_ty)
+      end
+    | calculateArrayIndex ptr _ _ _ scope = raise (TranslationError "Attempt to index on a not an array!")
+
+  and arrayDimFromExps exps scope = let
+      (*Makes sure all the elements of list are equal*)
+      fun all_equal [] = true
+        | all_equal [a] = true
+        | all_equal (a::b::cs) = if a <> b then false else all_equal (b::cs)
+      (*turns an expression into a dimension*)
+      fun elemToDim exp =
+          (case exp of 
+              Ast.Array sub_exps => arrayDimFromExps sub_exps scope
+            | Ast.EmptyArray dim => dim
+            | exp => [])
+      val first = length exps
+      val rest_list = map elemToDim exps
+    in
+      if all_equal rest_list then
+        (first::(hd rest_list))
+      else
+        raise (TranslationError "Sub array dimensions do not match")
+    end
+
   (*Hack to set variables correctly*)
-  and setVariable result exp = 
+  and setVariable result exp scope = 
     (case exp of
       (*needed for assign and let*)
       (* (Ast.Var x) => (result, [LLVM.Add (result,LLVM.i32, (LLVM.Num 0), (LLVM.Variable x))]) *)
-      (Ast.Var x) => (result, [LLVM.Alias ((LLVM.Variable result),(LLVM.Variable x))])
+        (Ast.Var x) => (result, [LLVM.Alias ((LLVM.Variable result),(LLVM.Variable x))])
+      | (Ast.Num x) => (result, [LLVM.Alias ((LLVM.Variable result),(LLVM.Num x))])
       (*needed for everything eles*)
-      | exp => setResult result (translate exp))
+      | exp => setResult result (translate exp scope))
 
-  and translate (Ast.Num (i)) = let
+  and translate (Ast.Print ast) scope = let
+      val pres = makenextvar ()
+      val (code,res) = evalArg scope ast
+    in
+      (pres,code@[LLVM.Print (pres,res)])
+    end
+  | translate (Ast.Block asts) scope = let
+      val i = makenextvar ()
+    in
+      foldl (fn (exp,(_,prev_code)) => let
+              val (res,code) = translate exp scope
+            in
+              (res,prev_code@code)
+            end
+            ) (i,[LLVM.Alias (LLVM.Variable i,LLVM.Num 0)]) asts
+    end
+  | translate (Ast.Num (i)) scope = let
       val l = makenextvar ()
       (*val code = [LLVM.Add (l,LLVM.i32, (LLVM.Num 0), (LLVM.Num i))]*)
       val code = [LLVM.Alias ((LLVM.Variable l), (LLVM.Num i))]
     in
       (l,code)
     end
-  | translate (Ast.Var (x)) =  let
+  | translate (Ast.Array (exps)) scope =  let
+      (* hopefully will return the expression that corresponds to a given index into the array *)
+      fun getExpForIndex [] [] = raise (TranslationError "Something terrible has happened!")
+        | getExpForIndex [] (exp::exps) = raise (TranslationError "Something terrible but not that first thing has happened!")
+        | getExpForIndex _ [] =  raise (TranslationError "Something terrible but not that first or second thing has happened!")
+        | getExpForIndex [0] (exp::exps) = exp
+        | getExpForIndex (0::indices) ((Ast.Array sub_exps)::exps) = getExpForIndex indices sub_exps
+        | getExpForIndex (0::indices) (_::exps) = raise (TranslationError "Array dimensions do not match for all elements yo!")
+        | getExpForIndex (i::indices) (exp::exps) = getExpForIndex ((i-1)::indices) exps
+
+      fun enumDims [] = [[]]
+        | enumDims (1::dims) = (map (fn a => 0::a) (enumDims dims))
+        | enumDims (d::dims) = (map (fn a => (d-1)::a) (enumDims dims))@(enumDims ((d-1)::dims))
+
+      val dim = arrayDimFromExps exps scope
+      val new_res = makenextvar ()
+      val (res,create_code) = translate (Ast.EmptyArray dim) scope
+      (*val _ = map (fn d => (map (print o Int.toString) d,print "\n")) (enumDims dim)*)
+
+      val update_code = foldl (fn (i,prev_code) => let
+              val (ptr,ptr_code,ty) = calculateArrayIndex res (llvmTypeForDim LLVM.i32 dim) (map Ast.Num i) dim scope
+              val (exp_code,exp_res) = evalArg scope (getExpForIndex i exps)
+            in
+              prev_code@ptr_code@exp_code@[LLVM.Store (ty,exp_res,LLVM.Variable ptr)]
+            end
+          ) [] (enumDims dim)
+    in
+      (new_res,create_code@update_code@[LLVM.Alias (LLVM.Variable new_res,LLVM.Variable res)])
+    end
+  | translate (Ast.EmptyArray (dims)) scope =  let
+      val l = makenextvar ()
+      val ty = llvmTypeForDim LLVM.i32 dims
+      val code = [LLVM.Alloca (l,ty,1)]
+    in
+      (l,code)
+    end
+    (*TODO: this needs to know the dimension of the array, we need scopes for this...*)
+  | translate (Ast.ArrayIndex (id,indices)) scope = 
+      (case getTypeForVar scope id of
+        (Array dim) => let
+            val ty = llvmTypeForDim LLVM.i32 dim
+            val (i_ptr,i_code,i_ty) = calculateArrayIndex id ty indices dim scope
+            val res = makenextvar ()
+            val code = i_code@[LLVM.Load (res,LLVM.ptr i_ty,LLVM.Variable i_ptr)]
+          in
+            (res,code)
+          end
+        | _ => raise (TranslationError (concat ["Attempt to index non-array variable '",id,"'"]))
+      )
+  | translate (Ast.Var (x)) scope =  let
   (*
       val l = makenextvar ()
       val code = [LLVM.Load (l,LLVM.pi32,(LLVM.Variable x))]
       val l = makenextvar ()
       *)
       (* val code = [LLVM.Add (l,LLVM.i32, (LLVM.Num 0), (LLVM.Variable x))] *)
+      val _ = getTypeForVar scope x (*we don't really care what the type is, we care if it's bound and this will bitch if it isn't*)
       val code = []
     in
       (x,code)
     end
-  | translate (Ast.Eq (a,b)) = let
-      val (code1,arg1) = evalArg a
-      val (code2,arg2) = evalArg b
+  | translate (Ast.Eq (a,b)) scope = let
+      val (code1,arg1) = evalArg scope a 
+      val (code2,arg2) = evalArg scope b 
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.CmpEq (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Ast.Less (a,b)) = let
-      val (code1,arg1) = evalArg a
-      val (code2,arg2) = evalArg b
+  | translate (Ast.Less (a,b)) scope = let
+      val (code1,arg1) = evalArg scope a 
+      val (code2,arg2) = evalArg scope b 
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.CmpLt (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Ast.LessEq (a,b)) = let
-      val (code1,arg1) = evalArg a
-      val (code2,arg2) = evalArg b
+  | translate (Ast.LessEq (a,b)) scope = let
+      val (code1,arg1) = evalArg scope a 
+      val (code2,arg2) = evalArg scope b 
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.CmpLe (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Ast.More (a,b)) = let
-      val (code1,arg1) = evalArg a
-      val (code2,arg2) = evalArg b
+  | translate (Ast.More (a,b)) scope = let
+      val (code1,arg1) = evalArg scope a 
+      val (code2,arg2) = evalArg scope b 
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.CmpGt (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Ast.MoreEq (a,b)) = let
-      val (code1,arg1) = evalArg a
-      val (code2,arg2) = evalArg b
+  | translate (Ast.MoreEq (a,b)) scope = let
+      val (code1,arg1) = evalArg scope a 
+      val (code2,arg2) = evalArg scope b 
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.CmpGe (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Ast.Not (a)) = let
-      val (code1,arg1) = evalArg a
+  | translate (Ast.Not (a)) scope = let
+      val (code1,arg1) = evalArg scope a 
       val l = makenextvar ()
     in
       (l,code1@[LLVM.Xor (l,LLVM.i1,(LLVM.Num 1),arg1)])
     end
-  | translate (Ast.Plus (a,b)) = let
-      val (code1,arg1) = evalArg a
-      val (code2,arg2) = evalArg b
+  | translate (Ast.Plus (a,b)) scope = let
+      val (code1,arg1) = evalArg scope a 
+      val (code2,arg2) = evalArg scope b 
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.Add (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Ast.Minus (a,b)) = let
-      val (code1,arg1) = evalArg a
-      val (code2,arg2) = evalArg b
+  | translate (Ast.Minus (a,b)) scope = let
+      val (code1,arg1) = evalArg scope a 
+      val (code2,arg2) = evalArg scope b 
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.Sub (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Ast.Mult (a,b)) = let
-      val (code1,arg1) = evalArg a
-      val (code2,arg2) = evalArg b
+  | translate (Ast.Mult (a,b)) scope = let
+      val (code1,arg1) = evalArg scope a 
+      val (code2,arg2) = evalArg scope b 
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.Mul (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Ast.Div (a,b)) = let
-      val (code1,arg1) = evalArg a
-      val (code2,arg2) = evalArg b
+  | translate (Ast.Div (a,b)) scope = let
+      val (code1,arg1) = evalArg scope a
+      val (code2,arg2) = evalArg scope b
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.Div (l,LLVM.i32,arg1,arg2)])
     end
-  | translate (Ast.Apply ((Ast.Var v),exps)) =  let
-      val argsAndCodes = map evalArg exps
+  | translate (Ast.Apply ((Ast.Var v),exps)) scope =  let
+      val argsAndCodes = map (evalArg scope) exps
       val code = (foldr (op @) [] (map (#1) argsAndCodes))
       val args = (map (#2) argsAndCodes)
       val l = makenextvar ()
     in
       (l,code@[LLVM.Call (l,LLVM.i32,v,args)])
     end
-  | translate (Ast.Apply _) =  raise (TranslationError "Can only apply on variables")
-  | translate (Ast.For (id,toexp,byexp,doexp,inexp)) = let
+  | translate (Ast.Apply _) scope =  raise (TranslationError "Can only apply on variables")
+  | translate (Ast.For (id,toexp,byexp,doexp,inexp)) scope = let
       val cnd_label = makenextlabel ()
       val update_label = makenextlabel ()
       val loop_start_label = makenextlabel ()
       val loop_end_label = makenextlabel ()
-      val (by_code,by_res) = evalArg byexp
-      val (to_code,to_res) = evalArg toexp
-      val (do_code,do_res) = evalArg doexp
-      val (in_res,in_code) = translate inexp
+      val (by_code,by_res) = evalArg scope byexp
+      val (to_code,to_res) = evalArg scope toexp
+      val (do_code,do_res) = evalArg scope doexp
+      val (in_res,in_code) = translate inexp scope
       val id_var = makenextvar ()
       val id_cmp_var = makenextvar ()
       val add_var = makenextvar ()
@@ -203,14 +315,14 @@ struct
         , LLVM.DefnLabel(loop_end_label)
        ]@in_code)
     end
-  | translate (Ast.If (bexp,texp,fexp)) = let
+  | translate (Ast.If (bexp,texp,fexp)) scope = let
       val [l_true,l_false,l_out] = map makenextlabel [(),(),()]
       val result = makenextvar ()
       (*conditional code and result*)
-      val (bcode,bres) = evalArg bexp
+      val (bcode,bres) = evalArg scope bexp
       (*set the result of both the true and false expressions to result*)
-      val (_,tcode) = setResult result (translate texp)
-      val (_,fcode) = setResult result (translate fexp)
+      val (_,tcode) = setResult result (translate texp scope)
+      val (_,fcode) = setResult result (translate fexp scope)
     in
       (result, bcode@[
           LLVM.CndBr (bres,(LLVM.Label l_true),(LLVM.Label l_false))
@@ -223,31 +335,20 @@ struct
         , LLVM.DefnLabel l_out
       ])
     end
-  (*
-      val [l1,l2,l3] = map makenextlabel [(),(),()]
-      val [l4,l5] = map makenextvar [(),()]
-      val (bcode,bres) = evalArg bexp
-      val (tcode,tres) = evalArg texp
-      val (fcode,fres) = evalArg fexp
-    in
-      (l5, [
-          LLVM.Alloca (l4,LLVM.i32)
-      ]@bcode@[
-          LLVM.CndBr (bres,(LLVM.Label l1),(LLVM.Label l2))
-        , LLVM.DefnLabel l1
-      ]@tcode@[
-          LLVM.Store (LLVM.i32,tres,(LLVM.Variable l4))
-        , LLVM.Br (LLVM.Label l3)
-        , LLVM.DefnLabel l2
-      ]@fcode@[
-          LLVM.Store (LLVM.i32,fres,(LLVM.Variable l4))
-        , LLVM.Br (LLVM.Label l3)
-        , LLVM.DefnLabel l3
-        , LLVM.Load (l5,LLVM.pi32,(LLVM.Variable l4))
-      ])
-    end
-    *)
-  | translate (Ast.Assign (id,exp)) = (*let
+  | translate (Ast.AssignArray (id,index,exp)) scope = 
+    (case getTypeForVar scope id of
+        (Array dim) => let
+            val ty = llvmTypeForDim LLVM.i32 dim
+            val (i_ptr,i_code,i_ty) = calculateArrayIndex id ty index dim scope
+            val (vcode,vres) = evalArg scope exp
+            val code = i_code@vcode@[LLVM.Store (i_ty,vres,LLVM.Variable i_ptr)]
+          in
+            (i_ptr,code)
+          end
+      | _ => raise (TranslationError (concat ["Attempt to index non-array variable '",id,"'"]))
+    )
+  | translate (Ast.Assign (id,exp)) scope = 
+  (*let
       val (vcode,varg) = evalArg exp
       val l = makenextvar ()
     in
@@ -256,11 +357,16 @@ struct
         , LLVM.Load (l,LLVM.pi32,(LLVM.Variable id))
       ])
     end *)
-    setVariable id exp
-  | translate (Ast.Let (id,exp,inexp)) =  let
+    setVariable id exp scope
+  | translate (Ast.Let (id,exp,inexp)) scope =  let
       (*val (vcode,varg) = evalArg exp*)
-      val (vres,vcode) = setVariable id exp
-      val (res,code) = translate inexp
+      val new_scope = (id,(case exp of
+              (Ast.Array exps) => Array (arrayDimFromExps exps scope)
+            | (Ast.EmptyArray dim) => Array dim
+            | _ => Int
+          ))::scope
+      val (vres,vcode) = setVariable id exp new_scope
+      val (res,code) = translate inexp new_scope
     in
     (*
       (res, vcode@[
@@ -270,10 +376,10 @@ struct
       *)
       (res, vcode@code)
     end
-  | translate (Ast.LetSta (fid,xids,fexp,inexp)) = let
+  | translate (Ast.Fun (fid,xids,fexp,inexp)) scope = let
       fun zipI32 [] = []
         | zipI32 (x::xs) = (x,LLVM.i32)::(zipI32 xs)
-      val (fcode,farg) = evalArg fexp
+      val (fcode,farg) = evalArg scope fexp
       val methodBody = 
       (* let's see what happens when we treat parameters like 'variables' hah!
         (*allocate memory for the parameters*)
@@ -289,13 +395,11 @@ struct
         [LLVM.Ret (LLVM.i32, farg)]
       val _ = addMethod (fid,LLVM.i32,(zipI32 (map (fn x => concat [(*"_",*)x]) xids)),methodBody)
     in
-      translate inexp
+      translate inexp scope
     end
-    (*treat dyn and static the same for now *)
-  | translate (Ast.LetDyn (fid,xids,fexp,inexp)) =  translate (Ast.LetSta (fid,xids,fexp,inexp))
 
   fun compile ast = let
-    val (mainBody,vres) = evalArg ast
+    val (mainBody,vres) = evalArg [] ast
     val res = case vres of
         (LLVM.Variable v) => v
       | (LLVM.Num i) => Int.toString(i)

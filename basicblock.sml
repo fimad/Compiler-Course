@@ -121,6 +121,8 @@ struct
           (replace new_bbg (set_code bb new_code), label_string)
         end
      end
+
+   fun replace_var bbg aliases = foldl (fn (bb,bbg) => replace bbg (set_code bb (((map (LLVM.replaceInOp aliases)) o code) bb))) bbg (to_list bbg)
   
   (**********************************
    *          DEF AND USE           *
@@ -128,6 +130,7 @@ struct
   
   fun def bb = let
       fun op2def (code as (LLVM.Load (s,_,_))) = [(s,code)]
+        | op2def (code as (LLVM.GetElementPtr (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Add (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Sub (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Mul (s,_,_,_))) =  [(s,code)]
@@ -140,7 +143,7 @@ struct
         | op2def (code as (LLVM.CmpLe (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.And (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Or (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Alloca (s,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Alloca (s,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Ashr (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Xor (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Call (s,_,_,_))) =  [(s,code)]
@@ -163,6 +166,7 @@ struct
       fun arg2use code (LLVM.Variable s) = [(s,code)]
         | arg2use _ _ = []
       fun op2use (code as (LLVM.Load (_,_,a))) = arg2use code a
+        | op2use (code as (LLVM.GetElementPtr (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Store (_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Add (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Sub (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)

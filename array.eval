@@ -1,0 +1,9 @@
+let a = []#5#5 in
+let x = 0 in
+for x to 4 by 1
+  let y = 0 in
+  for y to 4 by 1
+    a[x][y] := x + y
+  in 0
+in
+a[2][3]

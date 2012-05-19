@@ -2,7 +2,7 @@
 
 structure LLVM = 
 struct
-  datatype Type = notype | pi32  | i32 | i1
+  datatype Type = notype | i32 | i1 | array of int*Type | ptr of Type
   type Result = string
   datatype Arg = 
     Num of int
@@ -13,6 +13,7 @@ struct
     | Alias of Arg*Arg (*Not an actual byte code, but is used in replacing variables with constant expressions*)
     | Load of Result*Type*Arg
     | Store of Type*Arg*Arg
+    | GetElementPtr of Result*Type*Arg*Arg
     | Add of Result*Type*Arg*Arg
     | Sub of Result*Type*Arg*Arg
     | Mul of Result*Type*Arg*Arg
@@ -28,7 +29,7 @@ struct
     | Ret of Type*Arg
     | And of Result*Type*Arg*Arg
     | Or of Result*Type*Arg*Arg
-    | Alloca of Result*Type
+    | Alloca of Result*Type*int
     | Ashr of Result*Type*Arg*Arg
     | Xor of Result*Type*Arg*Arg
     | Call of Result*Type*string*(Arg list)
@@ -41,10 +42,15 @@ struct
 (* An entire program is just a collection of Methods *)
   type Program = Method list
 
-  fun printType pi32 = "i32*"
-    | printType i32 = "i32"
+  fun printType i32 = "i32"
     | printType i1 = "i1"
+    | printType (ptr ty) = concat [printType ty,"*"]
+    | printType (array (size,ty)) = concat ["[",(Int.toString size)," x ",(printType ty),"]"]
     | printType notype = ""
+
+  fun arrayType (array (size,array sub)) = arrayType (array sub)
+    | arrayType (array (size,ty)) = SOME ty
+    | arrayType _ = NONE
 
   fun printArg (Num i) = 
     (*sml formats negative numbers with a ~ instead of a -*)
@@ -100,7 +106,8 @@ struct
     | resultOf (CmpGe (res,ty,a1,a2)) = SOME res
     | resultOf (CmpLt (res,ty,a1,a2)) = SOME res
     | resultOf (CmpLe (res,ty,a1,a2)) = SOME res
-    | resultOf (Alloca (res,ty)) = SOME res
+    | resultOf (Alloca (res,ty,num)) = SOME res
+    | resultOf (GetElementPtr (res,ty,_,_)) = SOME res
     | resultOf (Call (res,ty,name,args)) = SOME res
     | resultOf _ = NONE
 
@@ -110,6 +117,7 @@ struct
           | replArg arg = arg
         fun replOP (Load (res,ty,a1)) = Load (res,ty,(replArg a1))
           | replOP (Store (ty,a1,a2)) = Store (ty,(replArg a1),(replArg a2))
+          | replOP (GetElementPtr (res,ty1,a1,a2)) = GetElementPtr (res,ty1,(replArg a1),(replArg a2))
           | replOP (Add (res,ty,a1,a2)) = Add (res,ty,(replArg a1),(replArg a2))
           | replOP (Sub (res,ty,a1,a2)) = Sub (res,ty,(replArg a1),(replArg a2))
           | replOP (Mul (res,ty,a1,a2)) = Mul (res,ty,(replArg a1),(replArg a2))
@@ -135,6 +143,7 @@ struct
 
   fun printOP (DefnLabel label) =  concat ["\n",label,":"]
     | printOP (Load (res,ty,arg)) =  h_printROP res "load" ty [arg]
+    | printOP (GetElementPtr (res,ty1,a1,a2)) = concat ["%",res," = getelementptr ",(printType ty1)," ",(printArg a1),", i32 0",", i32 ",(printArg a2)]
     | printOP (Store (ty,a1,a2)) =  concat [(h_printOP "store" ty [a1]),", ",(printType ty),"* ",(printArg a2)]
     | printOP (Add (res,ty,a1,a2)) =  h_printROP res "add" ty [a1, a2]
     | printOP (Sub (res,ty,a1,a2)) =  h_printROP res "sub" ty [a1, a2]
@@ -153,7 +162,7 @@ struct
     | printOP (CndBr (a1,a2,a3)) =  h_printOP "br" i1 [a1, a2, a3]
     | printOP (Br (a1)) =  h_printOP "br" notype [a1]
     | printOP (Ret (ty,a)) =  h_printOP "ret" ty [a]
-    | printOP (Alloca (res,ty)) =  h_printROP res "alloca" ty []
+    | printOP (Alloca (res,ty,num)) =  concat [h_printROP res "alloca" ty [], ", ", printType i32," ",(Int.toString num)]
     | printOP (Call (res,ty,name,args)) =  concat [(h_printROP res "call" ty [])," @",name,"(",(combArgs (map (fn x=> concat["i32 ",printArg x]) args)),")"]
     | printOP (Print (res,arg)) = concat["%",res," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.str, i32 0, i32 0), i32 ",(printArg arg),")"]
     | printOP (Raw str) = str
@@ -181,5 +190,42 @@ struct
   fun insertAfterLabel code new_code = (case code of
       (DefnLabel l)::rest => ((DefnLabel l)::new_code@rest)
     | _ => new_code@code)
+
+  
+(* replaces a specific Arg if it is an alias with it's value *)
+fun replaceArg [] arg = arg
+  | replaceArg ((a,new_v)::xs) (arg as (Variable v)) = if v = a then new_v else replaceArg xs arg
+  | replaceArg ((a,(new_v as (Label new_v_str)))::xs) (arg as (Label v)) = if v = a then new_v else replaceArg xs arg
+  | replaceArg ((a,(new_v as (Variable new_v_str)))::xs) (arg as (Label v)) = if v = a then (Label new_v_str) else replaceArg xs arg
+  | replaceArg _ arg = arg
+
+(* replaces arguments in opcodes if they have been aliased *)
+fun replaceInOp aliases code =  let
+    val replaceArg = replaceArg aliases (*presupply the list of aliases*)
+    fun replaceInOp' (Load (r,t,a1)) = Load (r,t,replaceArg a1)
+      | replaceInOp' (Store (t,a1,a2)) = Store (t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (GetElementPtr (r,t1,a1,a2)) = GetElementPtr (r,t1,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (Add (r,t,a1,a2)) = Add (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (Sub (r,t,a1,a2)) = Sub (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (Mul (r,t,a1,a2)) = Mul (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (Div (r,t,a1,a2)) = Div (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (CmpEq (r,t,a1,a2)) = CmpEq (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (CmpNe (r,t,a1,a2)) = CmpNe (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (CmpGt (r,t,a1,a2)) = CmpGt (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (CmpGe (r,t,a1,a2)) = CmpGe (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (CmpLt (r,t,a1,a2)) = CmpLt (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (CmpLe (r,t,a1,a2)) = CmpLe (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (Br (a1)) = Br (replaceArg a1)
+      | replaceInOp' (CndBr (a1,a2,a3)) = CndBr ((replaceArg a1),(replaceArg a2),(replaceArg a3))
+      | replaceInOp' (Ret (t,a1)) = Ret (t,(replaceArg a1))
+      | replaceInOp' (And (r,t,a1,a2)) = And (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (Or (r,t,a1,a2)) = Or (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (Ashr (r,t,a1,a2)) = Ashr (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (Xor (r,t,a1,a2)) = Xor (r,t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (Print (r,a1)) = Print (r,(replaceArg a1))
+      | replaceInOp' (Call (r,t,func,args)) = Call (r,t,func,(map replaceArg args))
+      | replaceInOp' (Phi (r,args)) = Phi (r,(map (fn (v,l)=>((replaceArg v),l)) args))
+      | replaceInOp' x = x
+    in replaceInOp' code end
 
 end

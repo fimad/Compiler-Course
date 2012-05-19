@@ -96,10 +96,57 @@ fun available_expressions graph = let
     if BB.graph_equal new_graph graph then new_graph else available_expressions new_graph
   end
 
+fun merge_bb bbg = let
+    val new_bbg = ref bbg
+    (* iterates through the list of basic blocks until it finds a pair it can merge, then it calls itself again from the start *)
+    fun merge_help [] = ()
+      | merge_help (bb::bbs) = (case BB.succ (!new_bbg) bb of
+          [s] => let
+              val s_code = BB.code s
+              val p_code = BB.code bb
+            in
+              (case (p_code,s_code) of 
+                ([LLVM.DefnLabel p_label,LLVM.Br _], ((LLVM.DefnLabel s_label)::_)) => let
+                    val _ = (new_bbg := BB.replace (BB.replace (!new_bbg) (BB.set_code bb s_code)) (BB.set_code s []))
+                    val _ = (new_bbg := BB.replace_var (!new_bbg) [(s_label,(LLVM.Variable p_label))])
+                  in
+                    ()
+                  end
+                | _ => 
+                  (case BB.pred (!new_bbg) s of (*if bb has just one successor*)
+                      [p] => let(*and that one successor has just one predeccsesor, MERGE 'EM!*)
+                        in
+                          (case (p_code,s_code) of 
+                              ([],_) => merge_help bbs
+                            | (_,[]) => merge_help bbs
+                            | (p_code, ((LLVM.DefnLabel s_label)::_)) => let
+                                val _ = (new_bbg := BB.replace (BB.replace (!new_bbg) (BB.set_code p (((rev o tl o rev) p_code)@(tl s_code)))) (BB.set_code s []))
+                                val (bg,p_label) = BB.get_label (!new_bbg) p
+                                val _ = (new_bbg := BB.replace_var bg [(s_label,(LLVM.Variable p_label))])
+                              in
+                                ()
+                              end
+                            | (p_code,s_code) => (new_bbg := BB.replace (BB.replace (!new_bbg) (BB.set_code p (p_code@s_code))) (BB.set_code s [])))
+                        end
+                     | _  => merge_help bbs)
+              )
+              end
+            | _   => merge_help bbs
+        )
+
+    (*call merge_help *)
+    val _ = merge_help (BB.to_list bbg)
+  in
+    (!new_bbg)
+  end
+
 val max_level = 1
 fun optimize i graph = (case i of
+    (*
         1 => optimize (i-1) (remove_excess_loads graph)
       | 2 => optimize (i-1) (available_expressions graph)
+    *)
+        1 => optimize (i-1) (merge_bb graph)
       | _ => graph)
 
 end
