@@ -201,6 +201,27 @@ struct
     in
       (x,code)
     end
+  | translate (Ast.NotEq (a,b)) scope = let
+      val (code1,arg1) = evalArg scope a 
+      val (code2,arg2) = evalArg scope b 
+      val l = makenextvar ()
+    in
+      (l,code1@code2@[LLVM.CmpNe (l,LLVM.i32,arg1,arg2)])
+    end
+  | translate (Ast.And (a,b)) scope = let
+      val (code1,arg1) = evalArg scope a 
+      val (code2,arg2) = evalArg scope b 
+      val l = makenextvar ()
+    in
+      (l,code1@code2@[LLVM.And (l,LLVM.i1,arg1,arg2)])
+    end
+  | translate (Ast.Or (a,b)) scope = let
+      val (code1,arg1) = evalArg scope a 
+      val (code2,arg2) = evalArg scope b 
+      val l = makenextvar ()
+    in
+      (l,code1@code2@[LLVM.Or (l,LLVM.i1,arg1,arg2)])
+    end
   | translate (Ast.Eq (a,b)) scope = let
       val (code1,arg1) = evalArg scope a 
       val (code2,arg2) = evalArg scope b 
@@ -279,41 +300,26 @@ struct
       (l,code@[LLVM.Call (l,LLVM.i32,v,args)])
     end
   | translate (Ast.Apply _) scope =  raise (TranslationError "Can only apply on variables")
-  | translate (Ast.For (id,toexp,byexp,doexp,inexp)) scope = let
+  | translate (Ast.For (init_exp,cond_exp,step_exp,doexp,inexp)) scope = let
       val cnd_label = makenextlabel ()
-      val update_label = makenextlabel ()
       val loop_start_label = makenextlabel ()
       val loop_end_label = makenextlabel ()
-      val (by_code,by_res) = evalArg scope byexp
-      val (to_code,to_res) = evalArg scope toexp
+      val (init_code,init_res) = evalArg scope init_exp
+      val (cond_code,cond_res) = evalArg scope cond_exp
+      val (step_code,step_res) = evalArg scope step_exp
       val (do_code,do_res) = evalArg scope doexp
       val (in_res,in_code) = translate inexp scope
-      val id_var = makenextvar ()
-      val id_cmp_var = makenextvar ()
-      val add_var = makenextvar ()
-      val cmp_var = makenextvar ()
     in
-      (in_res, to_code@by_code@[
-          LLVM.Br(LLVM.Label(cnd_label))
-
-        , LLVM.DefnLabel(update_label)
-        (* No longer handling variables in this manner
-        , LLVM.Load(id_var,LLVM.pi32,LLVM.Variable(id))
-        , LLVM.Add(add_var,LLVM.i32,LLVM.Variable(id_var),by_res)
-        , LLVM.Store(LLVM.i32,LLVM.Variable(add_var),LLVM.Variable(id))*)
-        , LLVM.Add(id,LLVM.i32,LLVM.Variable(id),by_res)
-        , LLVM.Br(LLVM.Label(cnd_label))
-
-        , LLVM.DefnLabel(cnd_label)
-        (*, LLVM.Load(id_cmp_var,LLVM.pi32,LLVM.Variable(id))*)
-        , LLVM.CmpNe(cmp_var,LLVM.i32,LLVM.Variable(id),to_res)
-        , LLVM.CndBr(LLVM.Variable(cmp_var),LLVM.Label(loop_start_label),LLVM.Label(loop_end_label))
-
+      (in_res, init_code@[
+          LLVM.Br (LLVM.Label cnd_label)
+        , LLVM.DefnLabel cnd_label
+        ]@cond_code@[
+          LLVM.CndBr(cond_res,LLVM.Label(loop_start_label),LLVM.Label(loop_end_label))
         , LLVM.DefnLabel(loop_start_label)
-       ]@do_code@[
-          LLVM.Br(LLVM.Label(update_label))
+        ]@do_code@step_code@[
+          LLVM.Br(LLVM.Label(cnd_label))
         , LLVM.DefnLabel(loop_end_label)
-       ]@in_code)
+        ]@in_code)
     end
   | translate (Ast.If (bexp,texp,fexp)) scope = let
       val [l_true,l_false,l_out] = map makenextlabel [(),(),()]
@@ -379,7 +385,9 @@ struct
   | translate (Ast.Fun (fid,xids,fexp,inexp)) scope = let
       fun zipI32 [] = []
         | zipI32 (x::xs) = (x,LLVM.i32)::(zipI32 xs)
-      val (fcode,farg) = evalArg scope fexp
+      fun zipInt [] = []
+        | zipInt (x::xs) = (x,Int)::(zipInt xs)
+      val (fcode,farg) = evalArg ((zipInt xids)@scope) fexp
       val methodBody = 
       (* let's see what happens when we treat parameters like 'variables' hah!
         (*allocate memory for the parameters*)
@@ -411,8 +419,8 @@ struct
         , []
         , mainBody@[
               (*LLVM.Raw (concat["%",l," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.str, i32 0, i32 0), i32 ",res,")"])*)
-              LLVM.Print (l,vres)
-            , LLVM.Ret (LLVM.i32,vres)
+              (*LLVM.Print (l,vres)
+            , *)LLVM.Ret (LLVM.i32,vres)
           ]
       )
     in

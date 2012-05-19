@@ -134,7 +134,7 @@ fun resolvePhi bbg = let
               fn p => List.exists (fn (v,_) => v = x) (BB.map_lookup out_map p)
             ) (BB.pred bbg b))
         (*val _ = print (concat ["var: ",x," , bb:",(Int.toString (BB.bb2id b)),", length: ",(Int.toString l),"\n"])*)
-      in l > 1 andalso List.exists (fn y => y=x) (map (#1) (BB.use b))
+      in l > 1(* andalso List.exists (fn y => y=x) (map (#1) (BB.use b))*)
       end
 
     (*place phi functions in new_bbg for variable x*)

@@ -16,10 +16,12 @@ structure Ast = Ast
 %left NEG
 %left MINUS PLUS
 %left MULT DIV
+%left AND OR
 %left LESS LESSEQ MORE MOREEQ EQ NOT
 
 %term ID of string | NUM of int | NEG | ASSIGN
     | PLUS | MULT | DIV | MINUS 
+    | AND | OR 
     | LESS | LESSEQ | MORE | MOREEQ | EQ | NOT
     | LPAREN | RPAREN | COMMA
     | IN | LET | FUN
@@ -58,7 +60,10 @@ EXP : TERM                        (TERM)
     | EXP DIV EXP                 (Ast.Div(EXP1,EXP2))
     (*bool arith*)
     | NOT EXP                     (Ast.Not(EXP1))
+    | EXP AND EXP                 (Ast.And(EXP1,EXP2))
+    | EXP OR EXP                  (Ast.Or(EXP1,EXP2))
     | EXP EQ EXP                  (Ast.Eq(EXP1,EXP2))
+    | EXP NOT EQ EXP              (Ast.NotEq(EXP1,EXP2))
     | EXP LESS EXP                (Ast.Less(EXP1,EXP2))
     | EXP LESSEQ EXP              (Ast.LessEq(EXP1,EXP2))
     | EXP MORE EXP                (Ast.More(EXP1,EXP2))
@@ -66,7 +71,7 @@ EXP : TERM                        (TERM)
     | ID ASSIGN EXP               (Ast.Assign(ID,EXP))
     | ID ARRAY_INDEX ASSIGN EXP   (Ast.AssignArray(ID,ARRAY_INDEX,EXP))
     | IF EXP THEN STATEMENT ELSE STATEMENT   (Ast.If(EXP,STATEMENT1,STATEMENT2))
-    | FOR ID TO EXP BY EXP STATEMENT IN STATEMENT   (Ast.For(ID,EXP1,EXP2,STATEMENT1,STATEMENT2))
+    | FOR LPAREN EXP SEMICOLON EXP SEMICOLON EXP RPAREN STATEMENT IN STATEMENT   (Ast.For(EXP1,EXP2,EXP3,STATEMENT1,STATEMENT2))
 
 TERM : ID                         (Ast.Var(ID))
      | ID ARRAY_INDEX             (Ast.ArrayIndex(ID,ARRAY_INDEX))

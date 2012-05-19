@@ -20,13 +20,16 @@ sig
     (*boolean arith*)
     | Not of ast
     | Eq of ast*ast
+    | Or of ast*ast
+    | And of ast*ast
+    | NotEq of ast*ast
     | Less of ast*ast
     | LessEq of ast*ast
     | More of ast*ast
     | MoreEq of ast*ast
     | Apply of ast*(ast list)
     | If of ast*ast*ast
-    | For of string*ast*ast*ast*ast
+    | For of ast*ast*ast*ast*ast
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
     | AssignArray of string*(ast list)*ast
     | Let of string*ast*ast
@@ -70,14 +73,17 @@ struct
     | Div of ast*ast
     | Mult of ast*ast
     | Not of ast
+    | And of ast*ast
+    | Or of ast*ast
     | Eq of ast*ast
+    | NotEq of ast*ast
     | Less of ast*ast
     | LessEq of ast*ast
     | More of ast*ast
     | MoreEq of ast*ast
     | Apply of ast*(ast list)
     | If of ast*ast*ast
-    | For of string*ast*ast*ast*ast
+    | For of ast*ast*ast*ast*ast
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
     | AssignArray of string*(ast list)*ast
     | Let of string*ast*ast

@@ -6,4 +6,4 @@ for x to 4 by 1
     a[x][y] := x + y
   in 0
 in
-a[2][3]
+  print a[2][3]
