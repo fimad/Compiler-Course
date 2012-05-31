@@ -7,6 +7,7 @@ structure VarMap = RedBlackMapFn (struct
   type ord_key = string
   val compare = String.compare
 end)
+(*
 fun remove_excess_loads graph = let
 
     fun rm_loads m graph bb = if BB.map_contains m bb then (m,graph) else let
@@ -65,6 +66,8 @@ fun remove_excess_loads graph = let
   in
     new_graph
   end
+*)
+fun remove_excess_loads graph = graph
 
 fun available_expressions graph = let
     fun avail_expr m graph bb = if BB.map_contains m bb then (m,graph) else let

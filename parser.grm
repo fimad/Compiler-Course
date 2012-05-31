@@ -20,7 +20,7 @@ structure Ast = Ast
 %left AND OR
 %left LESS LESSEQ MORE MOREEQ EQ NOT
 
-%term ID of string | NUM of int | NEG | ASSIGN
+%term ID of string | BOOL of bool | FLOAT of real | INT of int | NEG | ASSIGN
     | PLUS | MULT | DIV | MINUS 
     | AND | OR 
     | LESS | LESSEQ | MORE | MOREEQ | EQ | NOT
@@ -56,7 +56,7 @@ DO_BLOCK : DO EXPLIST END         (Ast.Block(EXPLIST))
 EXP : TERM                        (TERM)
     (*digit arith*)
     | PRINT EXP                   (Ast.Print(EXP))
-    | DIM LPAREN NUM COMMA ID RPAREN                   (Ast.Dim(NUM,ID))
+    | DIM LPAREN INT COMMA ID RPAREN                   (Ast.Dim(INT,ID))
     | EXP PLUS EXP                (Ast.Plus(EXP1,EXP2))
     | EXP MINUS EXP               (Ast.Minus(EXP1,EXP2))
     | EXP MULT EXP                (Ast.Mult(EXP1,EXP2))
@@ -78,8 +78,11 @@ EXP : TERM                        (TERM)
 
 TERM : ID                         (Ast.Var(ID))
      | ID ARRAY_INDEX             (Ast.ArrayIndex(ID,ARRAY_INDEX))
-     | NEG NUM                    (Ast.Num(0-NUM))
-     | NUM                        (Ast.Num(NUM))
+     | NEG INT                    (Ast.Int(0-INT))
+     | NEG FLOAT                  (Ast.Float(0.0-FLOAT))
+     | INT                        (Ast.Int(INT))
+     | FLOAT                      (Ast.Float(FLOAT))
+     | BOOL                       (Ast.Bool(BOOL))
      | START_ARRAY EXPLIST END_ARRAY  (Ast.Array (EXPLIST))
      | EMPTY_ARRAY ARRAY_DIM      (Ast.EmptyArray (ARRAY_DIM))
      | LPAREN EXP RPAREN          (EXP)
@@ -88,8 +91,8 @@ TERM : ID                         (Ast.Var(ID))
 ARRAY_INDEX : START_ARRAY EXP END_ARRAY ([EXP])
             | START_ARRAY EXP END_ARRAY ARRAY_INDEX (EXP::ARRAY_INDEX)
 
-ARRAY_DIM : POUND NUM             ([NUM])
-          | POUND NUM ARRAY_DIM   (NUM::ARRAY_DIM)
+ARRAY_DIM : POUND INT             ([INT])
+          | POUND INT ARRAY_DIM   (INT::ARRAY_DIM)
 
 EXPLIST : EXP                     ([EXP])
         | EXP COMMA EXPLIST       (EXP::EXPLIST)

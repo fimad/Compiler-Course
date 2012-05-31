@@ -9,7 +9,9 @@ sig
     | Dim of int*string (*statically gets the int level dimension of an array*) (*0 for non arrays*)
     | Block of ast list
     | Print of ast
-    | Num of int
+    | Int of int
+    | Float of real
+    | Bool of bool
     | EmptyArray of int list
     | Array of ast list
     | ArrayIndex of string*(ast list)
@@ -63,7 +65,9 @@ structure Ast :> AST =
 struct
   datatype ast
     = Var of string
-    | Num of int
+    | Int of int
+    | Float of real
+    | Bool of bool
     | Dim of int*string (*statically gets the int level dimension of an array*) (*0 for non arrays*)
     | Block of ast list
     | Print of ast
@@ -116,7 +120,9 @@ and showList i [] = ()
     showList i es
   end
 and showTree x (Ast.Var str) = indent x (concat ["Var(",str,")"])
-  | showTree x (Ast.Num i) = indent x (concat ["Num(",Int.toString(i),")"])
+  | showTree x (Ast.Int i) = indent x (concat ["Int(",Int.toString(i),")"])
+  | showTree x (Ast.Bool b) = indent x (concat ["Bool(",Bool.toString(b),")"])
+  | showTree x (Ast.Float f) = indent x (concat ["Float(",Real.toString(f),")"])
   | showTree x (Ast.Eq (e1,e2)) = let
       val _ = indent x "Eq"
       val _ = showTree (x+1) e1

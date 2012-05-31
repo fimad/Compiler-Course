@@ -2,10 +2,12 @@
 
 structure LLVM = 
 struct
-  datatype Type = notype | i32 | i1 | array of int*Type | ptr of Type
+  datatype Type = notype | i32 | i1 | float | array of int*Type | ptr of Type
   type Result = string
   datatype Arg = 
-    Num of int
+    Int of int
+    | Bool of bool
+    | Float of real
     | Variable of string
     | Label of string
   datatype OP = 
@@ -52,10 +54,16 @@ struct
     | arrayType (array (size,ty)) = SOME ty
     | arrayType _ = NONE
 
-  fun printArg (Num i) = 
+  fun printArg (Int i) = 
     (*sml formats negative numbers with a ~ instead of a -*)
       if( i >= 0 ) then Int.toString i
       else (concat ["-",(Int.toString (0-i))])
+    | printArg (Float f) = 
+    (*sml formats negative numbers with a ~ instead of a -*)
+      if( f >= 0.0 ) then Real.toString f
+      else (concat ["-",(Real.toString (0.0-f))])
+    | printArg (Bool false) = "false"
+    | printArg (Bool true) = "true"
     | printArg (Variable v) = concat ["%",v]
     | printArg (Label v) = concat ["label %",v]
 
@@ -70,6 +78,7 @@ struct
   fun h_printOP code ty args = concat [code," ",(printType ty)," ",combArgs (map printArg args)]
   fun h_printROP res code ty args = concat ["%",res," = ",(h_printOP code ty args)]
 
+  (*
   (*call statements and allocas are never equal because they have side effects each call*)
   fun eqOP (Store (ty_1,a1_1,a2_1)) (Store (ty_2,a1_2,a2_2)) = (ty_1 = ty_2 andalso a1_1 = a1_2 andalso a2_1 = a2_2)
     | eqOP (Add (_,ty_1,a1_1,a2_1)) (Add (_,ty_2,a1_2,a2_2)) = (ty_1 = ty_2 andalso a1_1 = a1_2 andalso a2_1 = a2_2)
@@ -90,6 +99,7 @@ struct
     (*| eqOP (Load (_,ty_1,arg_1)) (Load (_,ty_2,arg_2)) = (ty_1 = ty_2 andalso arg_1 = arg_2)*)
     | eqOP _ _ = false
   fun eqOP' (a,b) = eqOP a b
+  *)
   
   fun resultOf (Load (res,ty,arg)) = SOME res
     | resultOf (Add (res,ty,a1,a2)) = SOME res
