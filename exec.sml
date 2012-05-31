@@ -49,6 +49,7 @@ val _ = if shouldEval then
 fun shouldArg arg = List.foldr (fn (x,b) => (x = arg) orelse b) false (CommandLine.arguments ())
 val shouldO1 = shouldArg "-O1"
 val shouldO2 = shouldArg "-O2"
+val shouldAnnotate = shouldArg "-v"
 val optimizeLevel =
   if shouldArg "-O2" then 2 else
   if shouldArg "-O1" then 1 else
@@ -64,7 +65,7 @@ fun optimizeMethod (name,ty,args,code) = let
   in
     (name,ty,args,((BB.graph2code o (Optimize.optimize optimizeLevel)) bbGraph))
   end
-fun method2dot (title,_,_,code) = DOT.toDot title (Optimize.optimize optimizeLevel (SSA.completeSSA (BB.createBBGraph code)))
+fun method2dot (title,_,_,code) = DOT.toDot title (Optimize.optimize optimizeLevel (SSA.completeSSA (BB.createBBGraph code))) shouldAnnotate
 val _ = if shouldDot
   then print (concat (map method2dot program))
   else print (LLVM.printProgram (map optimizeMethod program))

@@ -2,7 +2,7 @@ signature DOTS =
 sig
   (*.*)
 
-  val toDot : string -> BB.BasicBlockGraph -> string
+  val toDot : string -> BB.BasicBlockGraph -> bool -> string
 
 end
 
