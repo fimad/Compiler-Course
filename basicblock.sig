@@ -3,7 +3,7 @@ sig
   (*.*)
 
   type BasicBlock
-  eqtype Annotation
+  type Annotation
   type BasicBlockGraph
   structure BBMap : ORD_MAP
 
@@ -28,6 +28,7 @@ sig
   val graph2code : BasicBlockGraph -> LLVM.OP list
   val num_blocks : BasicBlockGraph -> int
   val bb_equal : BasicBlock -> BasicBlock -> bool
+  val bb_eq : (BasicBlock * BasicBlock) -> bool
   val bb_compare : (BasicBlock * BasicBlock) -> order
 
   val replace_var : BasicBlockGraph -> (string*LLVM.Arg) list -> BasicBlockGraph
@@ -64,7 +65,7 @@ sig
 
   val map_lookup : 'a list BBMap.map -> BasicBlock -> 'a list
   val map_equal : ''a list BBMap.map -> ''a list BBMap.map -> bool
-  val map_contains : ''a BBMap.map -> BasicBlock -> bool
+  val map_contains : 'a BBMap.map -> BasicBlock -> bool
   val map_insert : 'a BBMap.map -> BasicBlock -> 'a -> 'a BBMap.map
   val map_find : 'a BBMap.map -> BasicBlock -> 'a option
 

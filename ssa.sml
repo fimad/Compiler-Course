@@ -16,7 +16,7 @@ struct
 fun calcDom bbg = let
     val dmap = ref BB.BBMap.empty
     val root = BB.root bbg
-    val all_but_root = BB.list_diff (BB.to_list bbg) [root]
+    val all_but_root = BB.list_diff' BB.bb_eq (BB.to_list bbg) [root]
     (*  Dom(n0) = {n0} *)
     val _ = let in dmap := (BB.map_insert (!dmap) root [root]) end
     (*
@@ -32,11 +32,11 @@ fun calcDom bbg = let
     fun calcDom_help old_dmap = let
         val _ = map (fn n => dmap := BB.map_insert (!dmap) n (n::(
                (* Dom(n) = {n} union with intersection over all p in pred(n) of Dom(p) *)
-              foldl (fn (p,b) => BB.list_inter b (let val d = BB.map_lookup (!dmap) p in d end)) (BB.to_list bbg) (BB.pred bbg n)
-            ))) (BB.list_diff (BB.to_list bbg) [root]) (* for each n in N-{n0} *)
+              foldl (fn (p,b) => BB.list_inter' BB.bb_eq  b (let val d = BB.map_lookup (!dmap) p in d end)) (BB.to_list bbg) (BB.pred bbg n)
+            ))) (BB.list_diff' BB.bb_eq (BB.to_list bbg) [root]) (* for each n in N-{n0} *)
       in
         (* while changes in any Dom(n) *)
-        if BB.map_equal old_dmap (!dmap) then (!dmap) else calcDom_help (!dmap)
+        if BB.map_equal' BB.bb_eq old_dmap (!dmap) then (!dmap) else calcDom_help (!dmap)
       end
   in
     calcDom_help (!dmap)
@@ -51,8 +51,8 @@ fun idom2 domMap n = let
   val doms = BB.map_lookup domMap n
   in case
     List.filter (fn m => 
-        (List.filter (fn p => dominates domMap m p) (BB.list_diff doms [m,n])) = []
-      ) (BB.list_diff doms [n])
+        length (List.filter (fn p => dominates domMap m p) (BB.list_diff' BB.bb_eq doms [m,n])) = 0
+      ) (BB.list_diff' BB.bb_eq doms [n])
   of
     (x::_) => x
     | _ => n
@@ -74,7 +74,7 @@ fun calcDF bbg = let
         val _ = map (fn c => let
               val _ = calcDF_help c (* compute _calcDF for all the children *)
               val wlist = BB.map_lookup (!dfmap) c
-              val _ = (s := BB.list_union (!s) (List.filter (fn w => not (dominates n w) orelse BB.bb_equal n w) wlist))
+              val _ = (s := BB.list_union' BB.bb_eq (!s) (List.filter (fn w => not (dominates n w) orelse BB.bb_equal n w) wlist))
             in () end) children
         val _ = (dfmap := BB.map_insert (!dfmap) n (!s))
       in
@@ -152,11 +152,11 @@ fun resolvePhi bbg = let
           | (b::bs) => let
               val _ = (worklist := bs) (*remove b from worklist*)
               val _ = map (*for each d in the df of b*)
-                (fn d => if (not (BB.list_has (!inserted) d) andalso b_needs_phi_for_x d x) then let
+                (fn d => if (not (BB.list_has' BB.bb_eq (!inserted) d) andalso b_needs_phi_for_x d x) then let
                     (*mark that we've inserted a phi function here*)
                     val _ = (inserted := d::(!inserted))
                     (*add d to the added and work list if we haven't seen it before*)
-                    val _ = if not (BB.list_has (!added) d) then let
+                    val _ = if not (BB.list_has' BB.bb_eq (!added) d) then let
                       val _ = (added := d::(!added)) 
                       val _ = (worklist := d::(!worklist))
                       in () end else ()

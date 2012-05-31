@@ -64,7 +64,7 @@ struct
     fun oneway e m1 m2 = BBMap.foldli (fn (k,v,b) => if list_equal' e (map_lookup m2 k) v then b else false) true m1
     in oneway e m1 m2 andalso oneway e m2 m1 end
   fun map_equal a b = map_equal' (op =) a b
-  fun map_contains m bb = if BBMap.find (m,bb) = NONE then false else true
+  fun map_contains m bb = if not (Option.isSome (BBMap.find (m,bb))) then false else true
   fun map_insert m bb v = BBMap.insert (m,bb,v)
   fun map_find m key = BBMap.find (m,key)
 
@@ -91,6 +91,7 @@ struct
   fun pred (graph,bbs) (label,_) = map (fn x => (id2bb (graph,bbs) (Graph.toInt x))) (Graph.pred (Graph.toNode (graph,label2int label)))
 
   fun bb_equal (l1,_) (l2,_) = label2int l1 = label2int l2
+  fun bb_eq ((l1,_),(l2,_)) = label2int l1 = label2int l2
 
   fun to_list (graph,bbs) = bbs
   fun to_graph (graph,bbs) = graph
