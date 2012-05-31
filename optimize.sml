@@ -69,6 +69,7 @@ fun remove_excess_loads graph = let
 *)
 fun remove_excess_loads graph = graph
 
+(*
 fun available_expressions graph = let
     fun avail_expr m graph bb = if BB.map_contains m bb then (m,graph) else let
         val bb = BB.id2bb graph (BB.bb2id bb) (*we need to refresh our copy of the bb incase it was changed in a previous step*)
@@ -98,6 +99,8 @@ fun available_expressions graph = let
     (*run until no changes take place*)
     if BB.graph_equal new_graph graph then new_graph else available_expressions new_graph
   end
+*)
+fun available_expressions graph = graph
 
 fun merge_bb bbg = let
     val new_bbg = ref bbg

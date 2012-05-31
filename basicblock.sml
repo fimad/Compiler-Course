@@ -24,27 +24,32 @@ struct
   (* for each element in xs, filter the remaining list *)
   (* non order preserving *)
   fun list_has lst a = List.exists (fn b => a=b) lst
+  fun list_has' e lst a = List.exists (fn b => e (a,b)) lst
 
   fun list_uniqify xs = foldl (fn (x,xs) => x::(List.filter (fn y => x<>y) xs) ) xs xs
+  fun list_uniqify' e xs = foldl (fn (x,xs) => x::(List.filter (fn y => not (e (x,y))) xs) ) xs xs
 
   (*subtracts the contents of list b from list a*)
   fun list_diff equals a [] = a
     | list_diff equals a (b::bs) = list_diff equals (List.filter (fn x => not (equals (b,x))) a) bs
-  fun list_diff' e a b = list_uniqify (list_diff e a b)
+  fun list_diff' e a b = list_uniqify' e (list_diff e a b)
   val list_diff = (fn a => fn b => list_uniqify (list_diff (op =) a b))
 
   fun list_union a b = list_uniqify (a@b)
+  fun list_union' e a b = list_uniqify' e (a@b)
 
-  fun list_inter a [] = []
-    | list_inter a (b::bs) = (if list_has a b then [b] else [])@(list_inter a bs)
+  fun list_inter' e a [] = []
+    | list_inter' e a (b::bs) = (if list_has' e a b then [b] else [])@(list_inter' e a bs)
+  fun list_inter a b = list_inter' (op =) a b
 
   (*returns true if two lists are set-wise equal*)
-  fun list_equal [] [] = true
-    | list_equal [] _ = false
-    | list_equal _ [] = false
-    | list_equal (x::xs) ys = let
-      fun rm ls = List.filter (fn z => z<>x) ls
-      in list_equal (rm xs) (rm ys) end
+  fun list_equal' e [] [] = true
+    | list_equal' e [] _ = false
+    | list_equal' e _ [] = false
+    | list_equal' e (x::xs) ys = let
+      fun rm ls = List.filter (fn z => not (e (z,x))) ls
+      in list_equal' e (rm xs) (rm ys) end
+  fun list_equal a b = list_equal' (op =) a b
 
   (*functions for dealing with maps of basic blocks to lists*)
   val bb_compare = (fn ((xl,_),(yl,_)) => Int.compare( label2int xl, label2int yl))
@@ -55,14 +60,15 @@ struct
   fun map_lookup m key = (case BBMap.find (m,key) of
         NONE => []
       | SOME v => v)
-  fun map_equal m1 m2 = let
-    fun oneway m1 m2 = BBMap.foldli (fn (k,v,b) => if list_equal (map_lookup m2 k) v then b else false) true m1
-    in oneway m1 m2 andalso oneway m2 m1 end
+  fun map_equal' e m1 m2 = let
+    fun oneway e m1 m2 = BBMap.foldli (fn (k,v,b) => if list_equal' e (map_lookup m2 k) v then b else false) true m1
+    in oneway e m1 m2 andalso oneway e m2 m1 end
+  fun map_equal a b = map_equal' (op =) a b
   fun map_contains m bb = if BBMap.find (m,bb) = NONE then false else true
   fun map_insert m bb v = BBMap.insert (m,bb,v)
   fun map_find m key = BBMap.find (m,key)
 
-  fun graph_equal (_,bbs_1) (_,bbs_2) = list_equal bbs_1 bbs_2
+  fun graph_equal (_,bbs_1) (_,bbs_2) = list_equal' (fn (a,b) => bb_compare (a,b) = EQUAL) bbs_1 bbs_2
 
   
   (**********************************
@@ -90,8 +96,9 @@ struct
   fun to_graph (graph,bbs) = graph
 
   fun replace (graph,bbs) bbnew = let
-      fun equals ((a,_),(b,_)) = a = b
-    in (graph,bbnew::(list_diff' equals bbs [bbnew])) end
+      fun equals (a,_) (b,_) = a = b
+    (* in (graph,bbnew::(list_diff' equals bbs [bbnew])) end *)
+    in (graph,bbnew::(List.filter (not o (equals bbnew)) bbs)) end
 
   fun block_map (graph,bbs) f = (graph,(map f bbs))
 
@@ -155,12 +162,14 @@ struct
       List.concat (map op2def (code bb))
     end
 
+    (*
   fun pred_def graph bb = let
       fun pred_def' m [] = m
         | pred_def' m bbs = foldl (fn (bb,m) => if BBMap.find (m,bb) = NONE then (pred_def' (BBMap.insert (m,bb,(def bb))) (pred graph bb)) else m) m bbs
     in
       List.concat (BBMap.listItems (pred_def' (map_insert BBMap.empty bb []) (pred graph bb)))
     end
+    *)
 
   fun use bb = let
       fun arg2use code (LLVM.Variable s) = [(s,code)]
@@ -211,7 +220,7 @@ struct
           BBMap.insert (
             m,
             bb,
-            (list_union (use bb) (list_diff' equals (map_lookup last_out bb) (def bb)))
+            (list_union' equals (use bb) (list_diff' equals (map_lookup last_out bb) (def bb)))
             (*(list_diff' equals (list_union (use bb) (map_lookup last_out bb)) (def bb))*)
           )
         ) BBMap.empty bbs
@@ -219,11 +228,11 @@ struct
           BBMap.insert (
             m,
             bb,
-            (foldl (fn (b,ls) => list_union ls (map_lookup last_in b)) [] (succ graph bb))
+            (foldl (fn (b,ls) => list_union' equals ls (map_lookup last_in b)) [] (succ graph bb))
           )
         ) BBMap.empty bbs
     in
-      if (map_equal last_in new_in) andalso (map_equal last_out new_out) then (new_in,new_out)
+      if (map_equal' equals last_in new_in) andalso (map_equal' equals last_out new_out) then (new_in,new_out)
       else in_out new_in new_out graph
     end
   val in_out = in_out BBMap.empty BBMap.empty

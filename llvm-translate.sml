@@ -58,7 +58,9 @@ struct
       (newRes, setResult_help code)
     end
 
-  fun evalArg scope (Ast.Num i) = ([],(LLVM.Num i))
+  fun evalArg scope (Ast.Int i) = ([],(LLVM.Int i))
+    | evalArg scope (Ast.Float f) = ([],(LLVM.Float f))
+    | evalArg scope (Ast.Bool b) = ([],(LLVM.Bool b))
     | evalArg scope expr = let
         val (res,code) = translate expr scope
       in
@@ -119,7 +121,9 @@ struct
       (*needed for assign and let*)
       (* (Ast.Var x) => (result, [LLVM.Add (result,LLVM.i32, (LLVM.Num 0), (LLVM.Variable x))]) *)
         (Ast.Var x) => (result, [LLVM.Alias ((LLVM.Variable result),(LLVM.Variable x))])
-      | (Ast.Num x) => (result, [LLVM.Alias ((LLVM.Variable result),(LLVM.Num x))])
+      | (Ast.Int x) => (result, [LLVM.Alias ((LLVM.Variable result),(LLVM.Int x))])
+      | (Ast.Float x) => (result, [LLVM.Alias ((LLVM.Variable result),(LLVM.Float x))])
+      | (Ast.Bool x) => (result, [LLVM.Alias ((LLVM.Variable result),(LLVM.Bool x))])
       (*needed for everything eles*)
       | exp => setResult result (translate exp scope))
 
@@ -135,7 +139,7 @@ struct
         | levelDimOfType level (LLVM.array (dim,ty)) = levelDimOfType (level-1) ty
         | levelDimOfType _ _ = 0
     in
-        (i, [LLVM.Alias (LLVM.Variable i, LLVM.Num (levelDimOfType level (getLLVMTypeForVar scope id)))])
+        (i, [LLVM.Alias (LLVM.Variable i, LLVM.Int (levelDimOfType level (getLLVMTypeForVar scope id)))])
     end
   | translate (Ast.Block asts) scope = let
       val i = makenextvar ()
@@ -145,15 +149,20 @@ struct
             in
               (res,prev_code@code)
             end
-            ) (i,[LLVM.Alias (LLVM.Variable i,LLVM.Num 0)]) asts
+            ) (i,[LLVM.Alias (LLVM.Variable i,LLVM.Int 0)]) asts
     end
-  | translate (Ast.Num (i)) scope = let
+  | translate (Ast.Int (i)) scope = let
       val l = makenextvar ()
-      (*val code = [LLVM.Add (l,LLVM.i32, (LLVM.Num 0), (LLVM.Num i))]*)
-      val code = [LLVM.Alias ((LLVM.Variable l), (LLVM.Num i))]
-    in
-      (l,code)
-    end
+      val code = [LLVM.Alias ((LLVM.Variable l), (LLVM.Int i))]
+    in (l,code) end
+  | translate (Ast.Float (i)) scope = let
+      val l = makenextvar ()
+      val code = [LLVM.Alias ((LLVM.Variable l), (LLVM.Float i))]
+    in (l,code) end
+  | translate (Ast.Bool (i)) scope = let
+      val l = makenextvar ()
+      val code = [LLVM.Alias ((LLVM.Variable l), (LLVM.Bool i))]
+    in (l,code) end
   | translate (Ast.Array (exps)) scope =  let
       (* hopefully will return the expression that corresponds to a given index into the array *)
       fun getExpForIndex [] [] = raise (TranslationError "Something terrible has happened!")
@@ -174,7 +183,7 @@ struct
       (*val _ = map (fn d => (map (print o Int.toString) d,print "\n")) (enumDims dim)*)
 
       val update_code = foldl (fn (i,prev_code) => let
-              val (ptr,ptr_code,ty) = calculateArrayIndex res (llvmTypeForDim LLVM.i32 dim) (map Ast.Num i) dim scope
+              val (ptr,ptr_code,ty) = calculateArrayIndex res (llvmTypeForDim LLVM.i32 dim) (map Ast.Int i) dim scope
               val (exp_code,exp_res) = evalArg scope (getExpForIndex i exps)
             in
               prev_code@ptr_code@exp_code@[LLVM.Store (ty,exp_res,LLVM.Variable ptr)]
@@ -275,7 +284,7 @@ struct
       val (code1,arg1) = evalArg scope a 
       val l = makenextvar ()
     in
-      (l,code1@[LLVM.Xor (l,LLVM.i1,(LLVM.Num 1),arg1)])
+      (l,code1@[LLVM.Xor (l,LLVM.i1,(LLVM.Int 1),arg1)])
     end
   | translate (Ast.Plus (a,b)) scope = let
       val (code1,arg1) = evalArg scope a 
@@ -334,7 +343,7 @@ struct
           LLVM.Br(LLVM.Label(cnd_label))
         , LLVM.DefnLabel(loop_end_label)
         ]@[
-          LLVM.Alias (LLVM.Variable res,LLVM.Num 0) (*For loops have no "value"*)
+          LLVM.Alias (LLVM.Variable res,LLVM.Int 0) (*For loops have no "value"*)
         ])
     end
   | translate (Ast.If (bexp,texp,fexp)) scope = let
@@ -426,7 +435,9 @@ struct
     val (mainBody,vres) = evalArg [] ast
     val res = case vres of
         (LLVM.Variable v) => v
-      | (LLVM.Num i) => Int.toString(i)
+      | (LLVM.Int i) => Int.toString(i)
+      | (LLVM.Float i) => Real.toString(i)
+      | (LLVM.Bool b) => Bool.toString(b)
       | (LLVM.Label v) => concat ["label %",v]
     val l = makenextvar ()
     val _ = addMethod (

@@ -2,8 +2,8 @@ signature BASICBLOCK =
 sig
   (*.*)
 
-  eqtype BasicBlock
-  type Annotation
+  type BasicBlock
+  eqtype Annotation
   type BasicBlockGraph
   structure BBMap : ORD_MAP
 
@@ -38,11 +38,20 @@ sig
   val def : BasicBlock -> (string*LLVM.OP) list
   val use : BasicBlock -> (string*LLVM.OP) list
 
+  (*
   val pred_def : BasicBlockGraph -> BasicBlock -> (string*LLVM.OP) list
+  *)
 
   val dummy_bb : LLVM.OP list -> BasicBlock
 
   val in_out : BasicBlockGraph -> ((string*LLVM.OP) list BBMap.map)*((string*LLVM.OP) list BBMap.map)
+
+  val list_uniqify' : (('a * 'a) -> bool) -> 'a list -> 'a list
+  val list_union' : (('a * 'a) -> bool) -> 'a list -> 'a list -> 'a list
+  val list_inter' : (('a * 'a) -> bool) -> 'a list -> 'a list -> 'a list
+  val list_diff' : (('a * 'a) -> bool) -> 'a list -> 'a list -> 'a list
+  val list_equal' : (('a * 'a) -> bool) -> 'a list -> 'a list -> bool
+  val list_has' : (('a * 'a) -> bool) -> 'a list -> 'a -> bool
 
   val list_uniqify : ''a list -> ''a list
   val list_union : ''a list -> ''a list -> ''a list
@@ -51,11 +60,13 @@ sig
   val list_equal : ''a list -> ''a list -> bool
   val list_has : ''a list -> ''a -> bool
 
-  val map_lookup : ''a list BBMap.map -> BasicBlock -> ''a list
+  val map_equal' : (('a * 'a) -> bool) -> 'a list BBMap.map -> 'a list BBMap.map -> bool
+
+  val map_lookup : 'a list BBMap.map -> BasicBlock -> 'a list
   val map_equal : ''a list BBMap.map -> ''a list BBMap.map -> bool
   val map_contains : ''a BBMap.map -> BasicBlock -> bool
-  val map_insert : ''a BBMap.map -> BasicBlock -> ''a -> ''a BBMap.map
-  val map_find : ''a BBMap.map -> BasicBlock -> ''a option
+  val map_insert : 'a BBMap.map -> BasicBlock -> 'a -> 'a BBMap.map
+  val map_find : 'a BBMap.map -> BasicBlock -> 'a option
 
   val graph_equal : BasicBlockGraph -> BasicBlockGraph -> bool
 
