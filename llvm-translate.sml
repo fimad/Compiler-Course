@@ -3,8 +3,7 @@
 structure LLVM_Translate = 
 struct
 
-  datatype DataType = Int | Array of int list
-  type Scope = string*DataType
+  type Scope = string*LLVM.Type
 
   val curlabel = ref 1
   fun nextvar () = concat ["_",Int.toString(!curlabel)]
@@ -70,14 +69,19 @@ struct
   and getTypeForVar [] var = raise (TranslationError (concat ["Unbound variable '",var,"'"]))
     | getTypeForVar ((x,t)::scope) var = if x = var then t else getTypeForVar scope var
 
+    (*
   and getLLVMTypeForVar scope var = let
       fun type2llvm Int =  LLVM.i32
         | type2llvm (Array []) = LLVM.i32
         | type2llvm (Array (d::dims)) = LLVM.array (d,(type2llvm (Array dims)))
     in type2llvm (getTypeForVar scope var) end
+    *)
 
   and llvmTypeForDim ty [] = ty
     | llvmTypeForDim ty (d::im) = LLVM.array (d,llvmTypeForDim ty im)
+
+  and dimFromLLVMType (LLVM.array (i,sub)) = i::(dimFromLLVMType sub)
+    | dimFromLLVMType _ = []
 
   and calculateArrayIndex ptr ty [] [] scope = (ptr,[],ty)
     | calculateArrayIndex ptr ty [] _ scope = raise (TranslationError (concat ["not enuff indices... yo.. in '",ptr,"'"]))
@@ -139,7 +143,7 @@ struct
         | levelDimOfType level (LLVM.array (dim,ty)) = levelDimOfType (level-1) ty
         | levelDimOfType _ _ = 0
     in
-        (i, [LLVM.Alias (LLVM.Variable i, LLVM.Int (levelDimOfType level (getLLVMTypeForVar scope id)))])
+        (i, [LLVM.Alias (LLVM.Variable i, LLVM.Int (levelDimOfType level (getTypeForVar scope id)))])
     end
   | translate (Ast.Block asts) scope = let
       val i = makenextvar ()
@@ -202,8 +206,9 @@ struct
     (*TODO: this needs to know the dimension of the array, we need scopes for this...*)
   | translate (Ast.ArrayIndex (id,indices)) scope = 
       (case getTypeForVar scope id of
-        (Array dim) => let
-            val ty = llvmTypeForDim LLVM.i32 dim
+        (ty as LLVM.array _) => let
+            (*val ty = llvmTypeForDim LLVM.i32 dim*)
+            val dim = dimFromLLVMType ty
             val (i_ptr,i_code,i_ty) = calculateArrayIndex id ty indices dim scope
             val res = makenextvar ()
             val code = i_code@[LLVM.Load (res,LLVM.ptr i_ty,LLVM.Variable i_ptr)]
@@ -368,8 +373,9 @@ struct
     end
   | translate (Ast.AssignArray (id,index,exp)) scope = 
     (case getTypeForVar scope id of
-        (Array dim) => let
-            val ty = llvmTypeForDim LLVM.i32 dim
+        (ty as LLVM.array _) => let
+            (*val ty = llvmTypeForDim LLVM.i32 dim*)
+            val dim = dimFromLLVMType ty
             val (i_ptr,i_code,i_ty) = calculateArrayIndex id ty index dim scope
             val (vcode,vres) = evalArg scope exp
             val code = i_code@vcode@[LLVM.Store (i_ty,vres,LLVM.Variable i_ptr)]
@@ -392,9 +398,9 @@ struct
   | translate (Ast.Let (id,exp,inexp)) scope =  let
       (*val (vcode,varg) = evalArg exp*)
       val new_scope = (id,(case exp of
-              (Ast.Array exps) => Array (arrayDimFromExps exps scope)
-            | (Ast.EmptyArray dim) => Array dim
-            | _ => Int
+              (Ast.Array exps) => llvmTypeForDim LLVM.i32 (arrayDimFromExps exps scope)
+            | (Ast.EmptyArray dim) => llvmTypeForDim LLVM.i32 dim
+            | _ => LLVM.i32
           ))::scope
       val (vres,vcode) = setVariable id exp new_scope
       val (res,code) = translate inexp new_scope
@@ -411,7 +417,7 @@ struct
       fun zipI32 [] = []
         | zipI32 (x::xs) = (x,LLVM.i32)::(zipI32 xs)
       fun zipInt [] = []
-        | zipInt (x::xs) = (x,Int)::(zipInt xs)
+        | zipInt (x::xs) = (x,LLVM.i32)::(zipInt xs)
       val (fcode,farg) = evalArg ((zipInt xids)@scope) fexp
       val methodBody = 
       (* let's see what happens when we treat parameters like 'variables' hah!

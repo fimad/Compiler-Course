@@ -195,6 +195,8 @@ struct
         "@.str = private constant [4 x i8] c\"%d\\0A\\00\", align 1\n\n"
       , (foldl (fn (a,b) => concat [a,"\n",b]) "" (map printMethod program))
       , "declare i32 @printf(i8*, ...)\n"
+      , "declare noalias i8* @malloc(i32) nounwind\n"
+      , "declare void @free(i8*) nounwind\n"
     ]
 
   fun insertAfterLabel code new_code = (case code of
