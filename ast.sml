@@ -12,7 +12,7 @@ sig
     | Int of int
     | Float of real
     | Bool of bool
-    | EmptyArray of int list
+    | EmptyArray of (LLVM.Type*(int list))
     | Array of ast list
     | ArrayIndex of string*(ast list)
     (*digit arith*)
@@ -36,7 +36,7 @@ sig
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
     | AssignArray of string*(ast list)*ast
     | Let of string*ast*ast
-    | Fun of string*(string list)*ast*ast
+    | Fun of string*((string*LLVM.Type) list)*ast*ast
   (*
    * enval is a datatype that covers the possible values that can be stored in the
    * environment. As of now this includes, the various functions and integers
@@ -93,7 +93,7 @@ struct
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
     | AssignArray of string*(ast list)*ast
     | Let of string*ast*ast
-    | Fun of string*(string list)*ast*ast
+    | Fun of string*((string*LLVM.Type) list)*ast*ast
 
   datatype enval
     = Val of int
@@ -191,7 +191,7 @@ and showTree x (Ast.Var str) = indent x (concat ["Var(",str,")"])
     in () end
   | showTree x (Ast.Fun (f,y,e1,e2)) = let
       val _ = indent x (concat ["Fun( ",f,"("])
-      val _ = showStringList (x+1) y
+      val _ = showStringList (x+1) (map #1 y)
       val _ = indent x ") )"
       val _ = showTree (x+1) e1
       val _ = showTree (x+1) e2

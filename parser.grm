@@ -31,17 +31,20 @@ structure Ast = Ast
     | EMPTY_ARRAY | START_ARRAY | END_ARRAY | POUND
     | PRINT
     | DIM
+    | TYPE_BOOL | TYPE_FLOAT | TYPE_INT | COLON
     | EOF
 %nonterm LETDEF of Ast.ast
        | EXP of Ast.ast
        | START of Ast.ast
-       | PARAMS of string list
+       | PARAMS of (string*LLVM.Type) list
        | EXPLIST of Ast.ast list
        | ARRAY_DIM of int list
        | ARRAY_INDEX of Ast.ast list
        | TERM of Ast.ast
        | STATEMENT of Ast.ast
        | DO_BLOCK of Ast.ast
+       | PRIMITIVE_TYPE of LLVM.Type
+       | TYPE of LLVM.Type
 
 %%
 
@@ -84,7 +87,7 @@ TERM : ID                         (Ast.Var(ID))
      | FLOAT                      (Ast.Float(FLOAT))
      | BOOL                       (Ast.Bool(BOOL))
      | START_ARRAY EXPLIST END_ARRAY  (Ast.Array (EXPLIST))
-     | EMPTY_ARRAY ARRAY_DIM      (Ast.EmptyArray (ARRAY_DIM))
+     | START_ARRAY PRIMITIVE_TYPE END_ARRAY ARRAY_DIM      (Ast.EmptyArray (PRIMITIVE_TYPE,ARRAY_DIM))
      | LPAREN EXP RPAREN          (EXP)
      | ID LPAREN EXPLIST RPAREN   (Ast.Apply(Ast.Var(ID),EXPLIST))
 
@@ -102,6 +105,12 @@ EXPLIST : EXP                     ([EXP])
 LETDEF : LET ID EQ STATEMENT IN STATEMENT                           (Ast.Let(ID,STATEMENT1,STATEMENT2))
        | FUN ID LPAREN PARAMS RPAREN EQ STATEMENT IN STATEMENT   (Ast.Fun(ID,PARAMS,STATEMENT1,STATEMENT2))
 
-PARAMS : ID                       ([ID])
-       | ID COMMA PARAMS          (ID::PARAMS)
+PARAMS : ID COLON TYPE                      ([(ID,TYPE)])
+       | ID COLON TYPE COMMA PARAMS          ((ID,TYPE)::PARAMS)
 
+TYPE : PRIMITIVE_TYPE                                         (PRIMITIVE_TYPE)
+     | START_ARRAY PRIMITIVE_TYPE END_ARRAY ARRAY_DIM         (foldr (fn (d,t) => LLVM.array (d,t)) PRIMITIVE_TYPE ARRAY_DIM)
+
+PRIMITIVE_TYPE : TYPE_INT                        (LLVM.i32)
+               | TYPE_FLOAT                      (LLVM.float)
+               | TYPE_BOOL                       (LLVM.i1)

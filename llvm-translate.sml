@@ -57,14 +57,21 @@ struct
       (newRes, setResult_help code)
     end
 
-  fun evalArg scope (Ast.Int i) = ([],(LLVM.Int i))
-    | evalArg scope (Ast.Float f) = ([],(LLVM.Float f))
-    | evalArg scope (Ast.Bool b) = ([],(LLVM.Bool b))
+  fun evalArg scope (Ast.Int i) = ([],(LLVM.Int i),LLVM.i32)
+    | evalArg scope (Ast.Float f) = ([],(LLVM.Float f),LLVM.float)
+    | evalArg scope (Ast.Bool b) = ([],(LLVM.Bool b),LLVM.i1)
     | evalArg scope expr = let
-        val (res,code) = translate expr scope
+        val (res,ty,code) = translate expr scope
       in
-        (code, (LLVM.Variable res))
+        (code, (LLVM.Variable res), ty)
       end
+
+  (*takes a list of variables and types, and returns code for casting (can resuse names, they will get renamed later), and final type*)
+  and resolveType' acc [] = acc
+    | resolveType' acc (x::xs) =  acc
+
+  and resolveType [] = raise (TranslationError "Expected Type but none found...")
+    | resolveType (x::xs) = resolveType' x xs
 
   and getTypeForVar [] var = raise (TranslationError (concat ["Unbound variable '",var,"'"]))
     | getTypeForVar ((x,t)::scope) var = if x = var then t else getTypeForVar scope var
@@ -82,6 +89,9 @@ struct
 
   and dimFromLLVMType (LLVM.array (i,sub)) = i::(dimFromLLVMType sub)
     | dimFromLLVMType _ = []
+
+  and arrayBaseType (LLVM.array (i,sub)) = arrayBaseType sub
+    | arrayBaseType ty = ty
 
   and calculateArrayIndex ptr ty [] [] scope = (ptr,[],ty)
     | calculateArrayIndex ptr ty [] _ scope = raise (TranslationError (concat ["not enuff indices... yo.. in '",ptr,"'"]))
@@ -133,9 +143,9 @@ struct
 
   and translate (Ast.Print ast) scope = let
       val pres = makenextvar ()
-      val (code,res) = evalArg scope ast
+      val (code,res,ty) = evalArg scope ast
     in
-      (pres,code@[LLVM.Print (pres,res)])
+      (pres,LLVM.i32,code@[LLVM.Print (pres,res)])
     end
   | translate (Ast.Dim (level,id)) scope = let
       val i = makenextvar ()
@@ -143,30 +153,30 @@ struct
         | levelDimOfType level (LLVM.array (dim,ty)) = levelDimOfType (level-1) ty
         | levelDimOfType _ _ = 0
     in
-        (i, [LLVM.Alias (LLVM.Variable i, LLVM.Int (levelDimOfType level (getTypeForVar scope id)))])
+        (i,LLVM.i32,[LLVM.Alias (LLVM.Variable i, LLVM.Int (levelDimOfType level (getTypeForVar scope id)))])
     end
   | translate (Ast.Block asts) scope = let
       val i = makenextvar ()
     in
-      foldl (fn (exp,(_,prev_code)) => let
-              val (res,code) = translate exp scope
+      foldl (fn (exp,(_,_,prev_code)) => let
+              val (res,ty,code) = translate exp scope
             in
-              (res,prev_code@code)
+              (res,ty,prev_code@code)
             end
-            ) (i,[LLVM.Alias (LLVM.Variable i,LLVM.Int 0)]) asts
+            ) (i,LLVM.i32,[LLVM.Alias (LLVM.Variable i,LLVM.Int 0)]) asts
     end
   | translate (Ast.Int (i)) scope = let
       val l = makenextvar ()
       val code = [LLVM.Alias ((LLVM.Variable l), (LLVM.Int i))]
-    in (l,code) end
+    in (l,LLVM.i32,code) end
   | translate (Ast.Float (i)) scope = let
       val l = makenextvar ()
       val code = [LLVM.Alias ((LLVM.Variable l), (LLVM.Float i))]
-    in (l,code) end
+    in (l,LLVM.float,code) end
   | translate (Ast.Bool (i)) scope = let
       val l = makenextvar ()
       val code = [LLVM.Alias ((LLVM.Variable l), (LLVM.Bool i))]
-    in (l,code) end
+    in (l,LLVM.i1,code) end
   | translate (Ast.Array (exps)) scope =  let
       (* hopefully will return the expression that corresponds to a given index into the array *)
       fun getExpForIndex [] [] = raise (TranslationError "Something terrible has happened!")
@@ -183,37 +193,38 @@ struct
 
       val dim = arrayDimFromExps exps scope
       val new_res = makenextvar ()
-      val (res,create_code) = translate (Ast.EmptyArray dim) scope
+      (*TODO FIND TYPE FOR INITIALIZED ARRAYS*)
+      val (res,ty,create_code) = translate (Ast.EmptyArray (dim)) scope
       (*val _ = map (fn d => (map (print o Int.toString) d,print "\n")) (enumDims dim)*)
 
       val update_code = foldl (fn (i,prev_code) => let
               val (ptr,ptr_code,ty) = calculateArrayIndex res (llvmTypeForDim LLVM.i32 dim) (map Ast.Int i) dim scope
-              val (exp_code,exp_res) = evalArg scope (getExpForIndex i exps)
+              val (exp_code,exp_res,exp_ty) = evalArg scope (getExpForIndex i exps)
             in
               prev_code@ptr_code@exp_code@[LLVM.Store (ty,exp_res,LLVM.Variable ptr)]
             end
           ) [] (enumDims dim)
     in
-      (new_res,create_code@update_code@[LLVM.Alias (LLVM.Variable new_res,LLVM.Variable res)])
+      (new_res,ty,create_code@update_code@[LLVM.Alias (LLVM.Variable new_res,LLVM.Variable res)])
     end
-  | translate (Ast.EmptyArray (dims)) scope =  let
+  | translate (Ast.EmptyArray (pty,dims)) scope =  let
       val l = makenextvar ()
-      val ty = llvmTypeForDim LLVM.i32 dims
+      val ty = llvmTypeForDim pty dims
       val code = [LLVM.Alloca (l,ty,1)]
     in
-      (l,code)
+      (l,ty,code)
     end
-    (*TODO: this needs to know the dimension of the array, we need scopes for this...*)
   | translate (Ast.ArrayIndex (id,indices)) scope = 
       (case getTypeForVar scope id of
         (ty as LLVM.array _) => let
             (*val ty = llvmTypeForDim LLVM.i32 dim*)
             val dim = dimFromLLVMType ty
+            val base_ty = arrayBaseType ty
             val (i_ptr,i_code,i_ty) = calculateArrayIndex id ty indices dim scope
             val res = makenextvar ()
             val code = i_code@[LLVM.Load (res,LLVM.ptr i_ty,LLVM.Variable i_ptr)]
           in
-            (res,code)
+            (res,base_ty,code)
           end
         | _ => raise (TranslationError (concat ["Attempt to index non-array variable '",id,"'"]))
       )
@@ -224,14 +235,14 @@ struct
       val l = makenextvar ()
       *)
       (* val code = [LLVM.Add (l,LLVM.i32, (LLVM.Num 0), (LLVM.Variable x))] *)
-      val _ = getTypeForVar scope x (*we don't really care what the type is, we care if it's bound and this will bitch if it isn't*)
+      val ty = getTypeForVar scope x (*we don't really care what the type is, we care if it's bound and this will bitch if it isn't*)
       val code = []
     in
-      (x,code)
+      (x,ty,code)
     end
   | translate (Ast.NotEq (a,b)) scope = let
-      val (code1,arg1) = evalArg scope a 
-      val (code2,arg2) = evalArg scope b 
+      val (code1,arg1,ty1) = evalArg scope a 
+      val (code2,arg2,ty2) = evalArg scope b 
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.CmpNe (l,LLVM.i32,arg1,arg2)])
@@ -418,21 +429,14 @@ struct
         | zipI32 (x::xs) = (x,LLVM.i32)::(zipI32 xs)
       fun zipInt [] = []
         | zipInt (x::xs) = (x,LLVM.i32)::(zipInt xs)
-      val (fcode,farg) = evalArg ((zipInt xids)@scope) fexp
+      val (fcode,farg) = evalArg (xids@scope) fexp
       val methodBody = 
-      (* let's see what happens when we treat parameters like 'variables' hah!
-        (*allocate memory for the parameters*)
-        (map (fn x => LLVM.Alloca (x,LLVM.i32)) xids)@
-        (*store the parameters in the allocated memory*)
-        (map (fn x =>
-          LLVM.Store (LLVM.i32,LLVM.Variable(concat [(*"_",*)x]),LLVM.Variable(x))
-        ) xids)@
-        *)
         (*execute the method body*)
         fcode@
         (*add the return statement*)
         [LLVM.Ret (LLVM.i32, farg)]
-      val _ = addMethod (fid,LLVM.i32,(zipI32 (map (fn x => concat [(*"_",*)x]) xids)),methodBody)
+        (*TODO INFER THE RETURN TYPE OF THE METHOD*)
+      val _ = addMethod (fid,LLVM.i32,xids,methodBody)
     in
       translate inexp scope
     end

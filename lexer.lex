@@ -26,6 +26,9 @@ ws = [\ \t];
 %%
 \n       => (pos := (!pos) + 1; lex());
 {ws}+    => (lex());
+"int"    => (Tokens.TYPE_INT(!pos,!pos));
+"float"  => (Tokens.TYPE_FLOAT(!pos,!pos));
+"bool"   => (Tokens.TYPE_BOOL(!pos,!pos));
 "print"  => (Tokens.PRINT(!pos,!pos));
 "dim"    => (Tokens.DIM(!pos,!pos));
 "and"    => (Tokens.AND(!pos,!pos));
@@ -57,6 +60,7 @@ ws = [\ \t];
 {digit}+ => (Tokens.INT (foldr (fn(a,r)=>ord(a)-ord(hd (explode "0"))+(r*10)) 0 (rev (explode yytext)),!pos,!pos));
 {id_start}{id_main}* => (Tokens.ID (yytext,!pos,!pos));
 ";"      => (Tokens.SEMICOLON(!pos,!pos));
+":"      => (Tokens.COLON(!pos,!pos));
 "~"      => (Tokens.NEG(!pos,!pos));
 ")"      => (Tokens.RPAREN(!pos,!pos));
 "("      => (Tokens.LPAREN(!pos,!pos));

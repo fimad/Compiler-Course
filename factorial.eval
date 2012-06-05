@@ -1,4 +1,4 @@
-fun factorial(max) =
+fun factorial(max : int) =
   let prod = 1 in
   let i = max in
   do

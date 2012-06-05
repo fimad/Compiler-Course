@@ -1,11 +1,11 @@
 /usr/lib/mlton/sml/basis/basis.mlb
 /usr/lib/mlton/sml/mlyacc-lib/mlyacc-lib.mlb
 /usr/lib/mlton/sml/smlnj-lib/Util/smlnj-lib.mlb
+llvm.sml
 ast.sml
 parser.grm.sig
 parser.grm.sml
 lexer.lex.sml
-llvm.sml
 llvm-translate.sml
 table.sig
 table.sml
