@@ -71,7 +71,7 @@ struct
     | Dim of int*string (*statically gets the int level dimension of an array*) (*0 for non arrays*)
     | Block of ast list
     | Print of ast
-    | EmptyArray of int list
+    | EmptyArray of LLVM.Type*(int list)
     | Array of ast list
     | ArrayIndex of string*(ast list)
     | Plus of ast*ast

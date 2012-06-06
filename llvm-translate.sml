@@ -67,11 +67,40 @@ struct
       end
 
   (*takes a list of variables and types, and returns code for casting (can resuse names, they will get renamed later), and final type*)
-  and resolveType' acc [] = acc
-    | resolveType' acc (x::xs) =  acc
+
+  and highestType acc [] = acc
+    | highestType acc ((x,ty)::xs) =
+      if acc = LLVM.float orelse ty = LLVM.float then highestType LLVM.float xs
+      else if acc = LLVM.i32 orelse ty = LLVM.i32 then highestType LLVM.i32 xs
+      else if acc = LLVM.i1 orelse ty = LLVM.i1 then highestType LLVM.i32 xs
+      else if acc = ty then highestType acc xs
+      else raise (TranslationError "Only primitive types may be mixed.")
+
+  and resolveType' code ty [] = (code,ty)
+    | resolveType' code ty ((x',ty')::xs) =
+        if ty = ty' then resolveType' code ty xs
+        else if ty' = LLVM.i32 then (*raise int one level and try again*)
+          resolveType' (code@[LLVM.SiToFp (x',LLVM.i32,x',LLVM.float)]) ty ((x',LLVM.float)::xs)
+        else if ty' = LLVM.i1 then (*raise bool one level and try again*)
+          resolveType' (code@[LLVM.ZExt (x',LLVM.i1,x',LLVM.i32)]) ty ((x',LLVM.i32)::xs)
+        else raise (TranslationError "Unable to raise type...That should not happen")
 
   and resolveType [] = raise (TranslationError "Expected Type but none found...")
-    | resolveType (x::xs) = resolveType' x xs
+    | resolveType (xs as ((_,ty)::_)) = resolveType' (highestType ty xs) xs
+
+  and ensureVar' code vars [] = (code,vars)
+    | ensureVar' code vars ((LLVM.Variable v)::xs) = ensureVar' code (v::vars) xs
+    | ensureVar' code vars ((LLVM.Label l)::xs) = ensureVar' code (l::vars) xs
+    | ensureVar' code vars (x::xs) = let
+        val v = makenextvar ()
+      in ensureVar' (code@[LLVM.Alias (v,x)]) (v::vars) xs end
+  and ensureVar xs = ensureVar' [] [] xs
+
+
+  and ensureType ty [] = ()
+    | ensureType ty (ty'::tys) =
+      if ty <> ty' then raise (TranslationError "WRONG TYPE YO!")
+      else ensureType ty tys
 
   and getTypeForVar [] var = raise (TranslationError (concat ["Unbound variable '",var,"'"]))
     | getTypeForVar ((x,t)::scope) var = if x = var then t else getTypeForVar scope var
@@ -243,13 +272,16 @@ struct
   | translate (Ast.NotEq (a,b)) scope = let
       val (code1,arg1,ty1) = evalArg scope a 
       val (code2,arg2,ty2) = evalArg scope b 
+      val (alias_code,[var1,var2]) = ensureVars [arg1,arg2]
+      val (cast_code,ty) = resolveType [(var1,ty1),(var2,ty2)]
       val l = makenextvar ()
     in
-      (l,code1@code2@[LLVM.CmpNe (l,LLVM.i32,arg1,arg2)])
+      (l,code1@code2@alias_code@cast_code@[LLVM.CmpNe (l,ty,var1,var2)])
     end
   | translate (Ast.And (a,b)) scope = let
-      val (code1,arg1) = evalArg scope a 
-      val (code2,arg2) = evalArg scope b 
+      val (code1,arg1,ty1) = evalArg scope a 
+      val (code2,arg2,ty2) = evalArg scope b 
+      val _ = ensureType LLVM.i1 [ty1,ty2]
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.And (l,LLVM.i1,arg1,arg2)])
@@ -257,6 +289,7 @@ struct
   | translate (Ast.Or (a,b)) scope = let
       val (code1,arg1) = evalArg scope a 
       val (code2,arg2) = evalArg scope b 
+      val _ = ensureType LLVM.i1 [ty1,ty2]
       val l = makenextvar ()
     in
       (l,code1@code2@[LLVM.Or (l,LLVM.i1,arg1,arg2)])
@@ -264,16 +297,20 @@ struct
   | translate (Ast.Eq (a,b)) scope = let
       val (code1,arg1) = evalArg scope a 
       val (code2,arg2) = evalArg scope b 
+      val (alias_code,[var1,var2]) = ensureVars [arg1,arg2]
+      val (cast_code,ty) = resolveType [(var1,ty1),(var2,ty2)]
       val l = makenextvar ()
     in
-      (l,code1@code2@[LLVM.CmpEq (l,LLVM.i32,arg1,arg2)])
+      (l,code1@code2@alias_code@cast_code@[LLVM.CmpEq (l,ty,var1,var2)])
     end
   | translate (Ast.Less (a,b)) scope = let
       val (code1,arg1) = evalArg scope a 
       val (code2,arg2) = evalArg scope b 
+      val (alias_code,[var1,var2]) = ensureVars [arg1,arg2]
+      val (cast_code,ty) = resolveType [(var1,ty1),(var2,ty2)]
       val l = makenextvar ()
     in
-      (l,code1@code2@[LLVM.CmpLt (l,LLVM.i32,arg1,arg2)])
+      (l,code1@code2@alias_code@cast_code@[LLVM.CmpLt (l,ty,var1,var2)])
     end
   | translate (Ast.LessEq (a,b)) scope = let
       val (code1,arg1) = evalArg scope a 

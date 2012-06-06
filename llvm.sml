@@ -12,6 +12,8 @@ struct
     | Label of string
   datatype OP = 
     DefnLabel of string
+    | ZExt of Result*Type*Arg*Type
+    | SiToFp of Result*Type*Arg*Type
     | Alias of Arg*Arg (*Not an actual byte code, but is used in replacing variables with constant expressions*)
     | Load of Result*Type*Arg
     | Store of Type*Arg*Arg
@@ -102,6 +104,8 @@ struct
   *)
   
   fun resultOf (Load (res,ty,arg)) = SOME res
+    | resultOf (ZExt (res,_,_,_)) = SOME res
+    | resultOf (SiToFp (res,_,_,_)) = SOME res
     | resultOf (Add (res,ty,a1,a2)) = SOME res
     | resultOf (Sub (res,ty,a1,a2)) = SOME res
     | resultOf (Mul (res,ty,a1,a2)) = SOME res
@@ -126,6 +130,8 @@ struct
         fun replArg (Variable v) = if v = old then (Variable new) else (Variable v)
           | replArg arg = arg
         fun replOP (Load (res,ty,a1)) = Load (res,ty,(replArg a1))
+          | replOP (ZExt (res,ty1,a1,ty2)) = ZExt (res,ty1,(replArg a1),ty2)
+          | replOP (SiToFp (res,ty1,a1,ty2)) = SiToFp (res,ty1,(replArg a1),ty2)
           | replOP (Store (ty,a1,a2)) = Store (ty,(replArg a1),(replArg a2))
           | replOP (GetElementPtr (res,ty1,a1,a2)) = GetElementPtr (res,ty1,(replArg a1),(replArg a2))
           | replOP (Add (res,ty,a1,a2)) = Add (res,ty,(replArg a1),(replArg a2))
@@ -152,6 +158,8 @@ struct
       in replaceVar xs new_code end
 
   fun printOP (DefnLabel label) =  concat ["\n",label,":"]
+    | printOP (ZExt (res,ty1,arg,ty2)) =  concat [h_printROP res "zext" ty1 [arg]," to ",printType ty2]
+    | printOP (SiToFp (res,ty1,arg,ty2)) =  concat [h_printROP res "sitofp" ty1 [arg]," to ",printType ty2]
     | printOP (Load (res,ty,arg)) =  h_printROP res "load" ty [arg]
     | printOP (GetElementPtr (res,ty1,a1,a2)) = concat ["%",res," = getelementptr ",(printType ty1)," ",(printArg a1),", i32 0",", i32 ",(printArg a2)]
     | printOP (Store (ty,a1,a2)) =  concat [(h_printOP "store" ty [a1]),", ",(printType ty),"* ",(printArg a2)]
@@ -216,6 +224,8 @@ fun replaceInOp aliases code =  let
     val replaceArg = replaceArg aliases (*presupply the list of aliases*)
     fun replaceInOp' (Load (r,t,a1)) = Load (r,t,replaceArg a1)
       | replaceInOp' (Store (t,a1,a2)) = Store (t,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (ZExt (res,t1,a1,t2)) = ZExt (res,t2,(replaceArg a1),t2)
+      | replaceInOp' (SiToFp (res,t1,a1,t2)) = SiToFp (res,t1,(replaceArg a1),t2)
       | replaceInOp' (GetElementPtr (r,t1,a1,a2)) = GetElementPtr (r,t1,(replaceArg a1),(replaceArg a2))
       | replaceInOp' (Add (r,t,a1,a2)) = Add (r,t,(replaceArg a1),(replaceArg a2))
       | replaceInOp' (Sub (r,t,a1,a2)) = Sub (r,t,(replaceArg a1),(replaceArg a2))
