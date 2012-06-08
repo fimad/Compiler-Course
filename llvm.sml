@@ -6,7 +6,7 @@ struct
   type Result = string
   datatype Arg = 
     Int of int
-    | Bool of bool
+    | Bool of int
     | Float of real
     | Variable of string
     | Label of string
@@ -36,8 +36,8 @@ struct
     | Alloca of Result*Type*int
     | Ashr of Result*Type*Arg*Arg
     | Xor of Result*Type*Arg*Arg
-    | Call of Result*Type*string*(Arg list)
-    | Print of Result*Arg
+    | Call of Result*Type*string*((Arg*Type) list)
+    | Print of Result*Type*Arg
     | Raw of string
     | Phi of Result*((Arg*Arg) list) (* Needs to be value/variabe,Label(of the corresponding block) *)
 
@@ -48,6 +48,7 @@ struct
 
   fun printType i32 = "i32"
     | printType i1 = "i1"
+    | printType float = "double"
     | printType (ptr ty) = concat [printType ty,"*"]
     | printType (array (size,ty)) = concat ["[",(Int.toString size)," x ",(printType ty),"]"]
     | printType notype = ""
@@ -56,16 +57,21 @@ struct
     | arrayType (array (size,ty)) = SOME ty
     | arrayType _ = NONE
 
-  fun printArg (Int i) = 
+  fun printPosReal exp f =
+      if f >= 10.0 then printPosReal (exp+1) (f/10.0)
+      else if f < 1.0 then printPosReal (exp-1) (f*10.0)
+      else concat [Real.toString f,"e",printArg (Int exp)]
+
+  and printArg (Int i) = 
     (*sml formats negative numbers with a ~ instead of a -*)
       if( i >= 0 ) then Int.toString i
       else (concat ["-",(Int.toString (0-i))])
     | printArg (Float f) = 
     (*sml formats negative numbers with a ~ instead of a -*)
-      if( f >= 0.0 ) then Real.toString f
-      else (concat ["-",(Real.toString (0.0-f))])
-    | printArg (Bool false) = "false"
-    | printArg (Bool true) = "true"
+      if( f >= 0.0 ) then printPosReal 0 f
+      else (concat ["-",(printPosReal 0 (0.0-f))])
+    | printArg (Bool 0) = "0"
+    | printArg (Bool _) = "1"
     | printArg (Variable v) = concat ["%",v]
     | printArg (Label v) = concat ["label %",v]
 
@@ -150,8 +156,8 @@ struct
           | replOP (Or (res,ty,a1,a2)) = Or (res,ty,(replArg a1),(replArg a2))
           | replOP (Ashr (res,ty,a1,a2)) = Ashr (res,ty,(replArg a1),(replArg a2))
           | replOP (Xor (res,ty,a1,a2)) = Xor (res,ty,(replArg a1),(replArg a2))
-          | replOP (Call (res,ty,fname,args)) = Call (res,ty,fname,(map replArg args))
-          | replOP (Print (res,arg)) = Print (res,(replArg arg))
+          | replOP (Call (res,ty,fname,args)) = Call (res,ty,fname,(map (fn (r,t) => (replArg r,t)) args))
+          | replOP (Print (res,t,arg)) = Print (res,t,(replArg arg))
           | replOP (Alias (a1,a2)) = Alias ((replArg a1),(replArg a2))
           | replOP code = code
         val new_code = map replOP code
@@ -159,13 +165,18 @@ struct
 
   fun printOP (DefnLabel label) =  concat ["\n",label,":"]
     | printOP (ZExt (res,ty1,arg,ty2)) =  concat [h_printROP res "zext" ty1 [arg]," to ",printType ty2]
+    (*| printOP (ZExt (res,ty1,arg,ty2)) =  concat [h_printROP res "zext" notype [], printType ty1," ", printArg arg," to ",printType ty2]*)
     | printOP (SiToFp (res,ty1,arg,ty2)) =  concat [h_printROP res "sitofp" ty1 [arg]," to ",printType ty2]
     | printOP (Load (res,ty,arg)) =  h_printROP res "load" ty [arg]
     | printOP (GetElementPtr (res,ty1,a1,a2)) = concat ["%",res," = getelementptr ",(printType ty1)," ",(printArg a1),", i32 0",", i32 ",(printArg a2)]
     | printOP (Store (ty,a1,a2)) =  concat [(h_printOP "store" ty [a1]),", ",(printType ty),"* ",(printArg a2)]
+    | printOP (Add (res,float,a1,a2)) =  h_printROP res "fadd" float [a1, a2]
     | printOP (Add (res,ty,a1,a2)) =  h_printROP res "add" ty [a1, a2]
+    | printOP (Sub (res,float,a1,a2)) =  h_printROP res "fsub" float [a1, a2]
     | printOP (Sub (res,ty,a1,a2)) =  h_printROP res "sub" ty [a1, a2]
+    | printOP (Mul (res,float,a1,a2)) =  h_printROP res "fmul" float [a1, a2]
     | printOP (Mul (res,ty,a1,a2)) =  h_printROP res "mul" ty [a1, a2]
+    | printOP (Div (res,float,a1,a2)) =  h_printROP res "fdiv" float [a1, a2]
     | printOP (Div (res,ty,a1,a2)) =  h_printROP res "sdiv" ty [a1, a2]
     | printOP (And (res,ty,a1,a2)) =  h_printROP res "and" ty [a1, a2]
     | printOP (Or (res,ty,a1,a2)) =  h_printROP res "or" ty [a1, a2]
@@ -181,8 +192,10 @@ struct
     | printOP (Br (a1)) =  h_printOP "br" notype [a1]
     | printOP (Ret (ty,a)) =  h_printOP "ret" ty [a]
     | printOP (Alloca (res,ty,num)) =  concat [h_printROP res "alloca" ty [], ", ", printType i32," ",(Int.toString num)]
-    | printOP (Call (res,ty,name,args)) =  concat [(h_printROP res "call" ty [])," @",name,"(",(combArgs (map (fn x=> concat["i32 ",printArg x]) args)),")"]
-    | printOP (Print (res,arg)) = concat["%",res," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.str, i32 0, i32 0), i32 ",(printArg arg),")"]
+    | printOP (Call (res,ty,name,args)) =  concat [(h_printROP res "call" ty [])," @",name,"(",(combArgs (map (fn (x,t)=> concat[printType t," ",printArg x]) args)),")"]
+    | printOP (Print (res,i32,arg)) = concat["%",res," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.print_int_str, i32 0, i32 0), i32 ",(printArg arg),")"]
+    | printOP (Print (res,i1,arg)) = concat["%",res," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.print_int_str, i32 0, i32 0), i1 ",(printArg arg),")"]
+    | printOP (Print (res,float,arg)) = concat["%",res," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.print_float_str, i32 0, i32 0), double ",(printArg arg),")"]
     | printOP (Raw str) = str
     | printOP (Phi (res,args)) =  concat ["%",res," = phi i32 ",(combArgs (map (fn (x,y) => concat["[ ",printArg x,",",printArg y,"]"]) args))]
     | printOP (Alias (a1,a2)) = concat ["alias ",(printArg a1)," = ",(printArg a2)]
@@ -200,7 +213,8 @@ struct
     end
 
   fun printProgram program = concat [
-        "@.str = private constant [4 x i8] c\"%d\\0A\\00\", align 1\n\n"
+        "@.print_int_str = private constant [4 x i8] c\"%d\\0A\\00\", align 1\n"
+      , "@.print_float_str = private constant [4 x i8] c\"%f\\0A\\00\", align 1\n\n"
       , (foldl (fn (a,b) => concat [a,"\n",b]) "" (map printMethod program))
       , "declare i32 @printf(i8*, ...)\n"
       , "declare noalias i8* @malloc(i32) nounwind\n"
@@ -224,7 +238,7 @@ fun replaceInOp aliases code =  let
     val replaceArg = replaceArg aliases (*presupply the list of aliases*)
     fun replaceInOp' (Load (r,t,a1)) = Load (r,t,replaceArg a1)
       | replaceInOp' (Store (t,a1,a2)) = Store (t,(replaceArg a1),(replaceArg a2))
-      | replaceInOp' (ZExt (res,t1,a1,t2)) = ZExt (res,t2,(replaceArg a1),t2)
+      | replaceInOp' (ZExt (res,t1,a1,t2)) = ZExt (res,t1,(replaceArg a1),t2)
       | replaceInOp' (SiToFp (res,t1,a1,t2)) = SiToFp (res,t1,(replaceArg a1),t2)
       | replaceInOp' (GetElementPtr (r,t1,a1,a2)) = GetElementPtr (r,t1,(replaceArg a1),(replaceArg a2))
       | replaceInOp' (Add (r,t,a1,a2)) = Add (r,t,(replaceArg a1),(replaceArg a2))
@@ -244,8 +258,8 @@ fun replaceInOp aliases code =  let
       | replaceInOp' (Or (r,t,a1,a2)) = Or (r,t,(replaceArg a1),(replaceArg a2))
       | replaceInOp' (Ashr (r,t,a1,a2)) = Ashr (r,t,(replaceArg a1),(replaceArg a2))
       | replaceInOp' (Xor (r,t,a1,a2)) = Xor (r,t,(replaceArg a1),(replaceArg a2))
-      | replaceInOp' (Print (r,a1)) = Print (r,(replaceArg a1))
-      | replaceInOp' (Call (r,t,func,args)) = Call (r,t,func,(map replaceArg args))
+      | replaceInOp' (Print (r,t,a1)) = Print (r,t,(replaceArg a1))
+      | replaceInOp' (Call (r,t,func,args)) = Call (r,t,func,(map (fn (r,t) => (replaceArg r,t)) args))
       | replaceInOp' (Phi (r,args)) = Phi (r,(map (fn (v,l)=>((replaceArg v),l)) args))
       | replaceInOp' x = x
     in replaceInOp' code end

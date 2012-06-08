@@ -11,7 +11,7 @@ sig
     | Print of ast
     | Int of int
     | Float of real
-    | Bool of bool
+    | Bool of int
     | EmptyArray of (LLVM.Type*(int list))
     | Array of ast list
     | ArrayIndex of string*(ast list)
@@ -36,7 +36,7 @@ sig
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
     | AssignArray of string*(ast list)*ast
     | Let of string*ast*ast
-    | Fun of string*((string*LLVM.Type) list)*ast*ast
+    | Fun of string*((string*LLVM.Type) list)*LLVM.Type*ast*ast
   (*
    * enval is a datatype that covers the possible values that can be stored in the
    * environment. As of now this includes, the various functions and integers
@@ -67,7 +67,7 @@ struct
     = Var of string
     | Int of int
     | Float of real
-    | Bool of bool
+    | Bool of int
     | Dim of int*string (*statically gets the int level dimension of an array*) (*0 for non arrays*)
     | Block of ast list
     | Print of ast
@@ -93,7 +93,7 @@ struct
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
     | AssignArray of string*(ast list)*ast
     | Let of string*ast*ast
-    | Fun of string*((string*LLVM.Type) list)*ast*ast
+    | Fun of string*((string*LLVM.Type) list)*LLVM.Type*ast*ast
 
   datatype enval
     = Val of int
@@ -121,7 +121,7 @@ and showList i [] = ()
   end
 and showTree x (Ast.Var str) = indent x (concat ["Var(",str,")"])
   | showTree x (Ast.Int i) = indent x (concat ["Int(",Int.toString(i),")"])
-  | showTree x (Ast.Bool b) = indent x (concat ["Bool(",Bool.toString(b),")"])
+  | showTree x (Ast.Bool b) = indent x (concat ["Bool(",Int.toString(b),")"])
   | showTree x (Ast.Float f) = indent x (concat ["Float(",Real.toString(f),")"])
   | showTree x (Ast.Eq (e1,e2)) = let
       val _ = indent x "Eq"
@@ -189,7 +189,7 @@ and showTree x (Ast.Var str) = indent x (concat ["Var(",str,")"])
       val _ = showTree (x+1) e1
       val _ = showTree (x+1) e2
     in () end
-  | showTree x (Ast.Fun (f,y,e1,e2)) = let
+  | showTree x (Ast.Fun (f,y,t,e1,e2)) = let
       val _ = indent x (concat ["Fun( ",f,"("])
       val _ = showStringList (x+1) (map #1 y)
       val _ = indent x ") )"

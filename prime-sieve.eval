@@ -1,4 +1,4 @@
-let sieve = []#100 in
+let sieve = [int]#100 in
 let i = 0 in
 let j = 0 in
 do

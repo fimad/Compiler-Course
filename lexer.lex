@@ -45,18 +45,18 @@ ws = [\ \t];
 "fun" => (Tokens.FUN(!pos,!pos));
 "in" => (Tokens.IN(!pos,!pos));
 "pass" => (Tokens.INT(0,!pos,!pos));
-"true" => (Tokens.BOOL(true,!pos,!pos));
-"false" => (Tokens.BOOL(false,!pos,!pos));
-{digit}+\.{digit}* => (Tokens.FLOAT ( ((fn (l,r,_) => l+r)(foldr (fn(a,(left,right,point))=>
+"true" => (Tokens.BOOL(1,!pos,!pos));
+"false" => (Tokens.BOOL(0,!pos,!pos));
+{digit}+\.{digit}* => (Tokens.FLOAT ( ((fn (l,r,r_exp,_) => l+(r/r_exp))(foldr (fn(a,(left,right,exp,point))=>
             if a = #"." then
-              (left,right,true)
+              (left,right,exp,true)
             else
               if point then
-                (left,(real (ord(a)-ord(#"0")))+(right / 10.0), point)
+                (left,(real (ord(a)-ord(#"0")))+(right*10.0),exp*10.0, point)
               else
-                ((real (ord(a)-ord(#"0")))+(left*10.0), right, point)
+                ((real (ord(a)-ord(#"0")))+(left*10.0), right, exp, point)
           )
-          (0.0,0.0,false) (rev (explode yytext)))),!pos,!pos));
+          (0.0,0.0,1.0,false) (rev (explode yytext)))),!pos,!pos));
 {digit}+ => (Tokens.INT (foldr (fn(a,r)=>ord(a)-ord(hd (explode "0"))+(r*10)) 0 (rev (explode yytext)),!pos,!pos));
 {id_start}{id_main}* => (Tokens.ID (yytext,!pos,!pos));
 ";"      => (Tokens.SEMICOLON(!pos,!pos));

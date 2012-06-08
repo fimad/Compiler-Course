@@ -250,9 +250,11 @@ fun renameVariables bbg = let
                         | (LLVM.Alloca (r,t,i)) => LLVM.Alloca ((change_result r),t,i)
                         | (LLVM.Ashr (r,t,a1,a2)) => LLVM.Ashr ((change_result r),t,(change_arg a1),(change_arg a2))
                         | (LLVM.Xor (r,t,a1,a2)) => LLVM.Xor ((change_result r),t,(change_arg a1),(change_arg a2))
-                        | (LLVM.Call (r,t,func,args)) => LLVM.Call ((change_result r),t,func,(map change_arg args))
-                        | (LLVM.Print (r,arg)) => LLVM.Print ((change_result r), (change_arg arg))
+                        | (LLVM.Call (r,t,func,args)) => LLVM.Call ((change_result r),t,func,(map (fn (r,t) => (change_arg r,t)) args))
+                        | (LLVM.Print (r,t,arg)) => LLVM.Print ((change_result r),t,(change_arg arg))
                         | (LLVM.Phi (r,args)) => LLVM.Phi ((change_result r), args)
+                        | (LLVM.ZExt (r,t1,a1,t2)) => LLVM.ZExt ((change_result r),t1,(change_arg a1),t2)
+                        | (LLVM.SiToFp (r,t1,a1,t2)) => LLVM.SiToFp ((change_result r),t1,(change_arg a1),t2)
                         | (LLVM.Alias ((LLVM.Variable r),a)) => LLVM.Alias (LLVM.Variable (change_result r), (change_arg a))
                         | x => x (* default: don't change anything *)
                     end

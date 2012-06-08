@@ -20,7 +20,7 @@ structure Ast = Ast
 %left AND OR
 %left LESS LESSEQ MORE MOREEQ EQ NOT
 
-%term ID of string | BOOL of bool | FLOAT of real | INT of int | NEG | ASSIGN
+%term ID of string | BOOL of int | FLOAT of real | INT of int | NEG | ASSIGN
     | PLUS | MULT | DIV | MINUS 
     | AND | OR 
     | LESS | LESSEQ | MORE | MOREEQ | EQ | NOT
@@ -103,7 +103,7 @@ EXPLIST : EXP                     ([EXP])
 
 
 LETDEF : LET ID EQ STATEMENT IN STATEMENT                           (Ast.Let(ID,STATEMENT1,STATEMENT2))
-       | FUN ID LPAREN PARAMS RPAREN EQ STATEMENT IN STATEMENT   (Ast.Fun(ID,PARAMS,STATEMENT1,STATEMENT2))
+       | FUN ID LPAREN PARAMS RPAREN COLON TYPE EQ STATEMENT IN STATEMENT   (Ast.Fun(ID,PARAMS,TYPE,STATEMENT1,STATEMENT2))
 
 PARAMS : ID COLON TYPE                      ([(ID,TYPE)])
        | ID COLON TYPE COMMA PARAMS          ((ID,TYPE)::PARAMS)
