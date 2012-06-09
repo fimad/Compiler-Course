@@ -408,19 +408,63 @@ struct
     in
       (l,ty,code1@code2@alias_code@cast_code@[LLVM.Div (l,ty,LLVM.Variable var1,LLVM.Variable var2)])
     end
-  | translate (Ast.Apply ((Ast.Var v),exps)) scope fscope =  let
-      val argsAndCodes = map (evalArg scope fscope) exps
-      val code = (foldr (op @) [] (map (#1) argsAndCodes))
-      val args = (map (fn (_,r,t) => (r,t)) argsAndCodes)
-      (*change arrays so that they are passed as pointers*)
-      val args = map (fn (x,ty) => case ty of
-          LLVM.array _ => (x,LLVM.ptr ty)
-          | _ => (x,ty)) args
-      val l = makenextvar ()
-      val ty = typeForFunc v fscope
-    in
-      (l,ty,code@[LLVM.Call (l,ty,v,args)])
-    end
+  | translate (Ast.Apply ((Ast.Var v),exps)) scope fscope = 
+    if LLVM.isUserTypeForm v then
+      let
+        val form = v
+
+        val var_malloc = makenextvar ()
+        val var_form_type = makenextvar ()
+        val var_T_type = makenextvar ()
+        val var_form_ptr = makenextvar ()
+
+        val (user_type as (LLVM.usertype name)) = LLVM.getTypeForForm form
+        val form_type = LLVM.usertype_form (name,form)
+        val types = LLVM.getFormTypes form
+        (* error checking, wut?*)
+        val _ = if length types <> length exps then raise (TranslationError (concat["Incorrect number of expressions for '",form,"'"])) else ()
+
+        fun initialize i [] = []
+          | initialize i ((t,exp)::xs) = let
+              val (code,arg,ety) = evalArg scope fscope exp
+              val (alias_code,[var]) = ensureVars [arg]
+              val (cast_code,ty) = resolveType' [] t [(var,ety)]
+              val var_val_ptr = makenextvar ()
+            in
+              code @alias_code @cast_code
+              (* store the value in the struct *)
+              @[  LLVM.GetElementPtr (var_val_ptr,LLVM.ptr form_type,LLVM.Variable var_form_type,LLVM.Int i)
+                , LLVM.Store (t,LLVM.Variable var,LLVM.Variable var_val_ptr)
+              ]@(initialize (i+1) xs)
+            end
+
+        val code = [
+              LLVM.Call (var_malloc, LLVM.ptr LLVM.i8, "malloc", [(LLVM.Int (LLVM.sizeOfType user_type),LLVM.i32)])
+            , LLVM.Bitcast (var_T_type, LLVM.ptr LLVM.i8, LLVM.Variable var_malloc, LLVM.ptr LLVM.usertype_parent)
+            (* set the form tracker *)
+            , LLVM.GetElementPtr (var_form_ptr,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,LLVM.Int 0)
+            , LLVM.Store (LLVM.i32,LLVM.Int (LLVM.getFormIndex form),LLVM.Variable var_form_ptr)
+            (* grab a pointer to the data portion *)
+            , LLVM.GetElementPtr (var_form_type,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,LLVM.Int 1)
+            , LLVM.Bitcast (var_form_type, LLVM.ptr LLVM.i8, LLVM.Variable var_malloc, LLVM.ptr form_type)
+          ]@(initialize 0 (ListPair.zip (types,exps)))
+      in
+        (var_malloc,user_type,code)
+      end
+    else
+      let
+        val argsAndCodes = map (evalArg scope fscope) exps
+        val code = (foldr (op @) [] (map (#1) argsAndCodes))
+        val args = (map (fn (_,r,t) => (r,t)) argsAndCodes)
+        (*change arrays so that they are passed as pointers*)
+        val args = map (fn (x,ty) => case ty of
+            LLVM.array _ => (x,LLVM.ptr ty)
+            | _ => (x,ty)) args
+        val l = makenextvar ()
+        val ty = typeForFunc v fscope
+      in
+        (l,ty,code@[LLVM.Call (l,ty,v,args)])
+      end
   | translate (Ast.Apply _) scope fscope =  raise (TranslationError "Can only apply on variables")
   | translate (Ast.For (init_exp,cond_exp,step_exp,doexp)) scope fscope = let
       val cnd_label = makenextlabel ()
@@ -556,7 +600,8 @@ struct
     | getFunScope (Ast.Let (_,_,exp)) = getFunScope exp
     | getFunScope _ = []
 
-  fun compile ast = let
+  fun compile (Ast.Program (types,ast)) = let
+    val _ = map LLVM.addUserType types (*add the user types to the scope*)
     val funScope = getFunScope ast
     val (mainBody,vres,vty) = evalArg [] funScope ast
     val res = case vres of

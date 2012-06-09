@@ -5,7 +5,8 @@ sig
   (* Definition of the AST
    * ast is a datatype encapsulating the abstract syntax of the language e *)
   datatype ast
-    = Var of string
+    = Program of (LLVM.UserType list)*ast
+    | Var of string
     | Dim of int*string (*statically gets the int level dimension of an array*) (*0 for non arrays*)
     | Block of ast list
     | Print of ast
@@ -31,6 +32,7 @@ sig
     | More of ast*ast
     | MoreEq of ast*ast
     | Apply of ast*(ast list)
+    | Case of ast*(string*string list*ast) list
     | If of ast*ast*ast
     | For of ast*ast*ast*ast
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
@@ -64,7 +66,8 @@ end
 structure Ast :> AST = 
 struct
   datatype ast
-    = Var of string
+    = Program of (LLVM.UserType list)*ast
+    | Var of string
     | Int of int
     | Float of real
     | Bool of int
@@ -88,6 +91,7 @@ struct
     | More of ast*ast
     | MoreEq of ast*ast
     | Apply of ast*(ast list)
+    | Case of ast*(string*string list*ast) list
     | If of ast*ast*ast
     | For of ast*ast*ast*ast
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)

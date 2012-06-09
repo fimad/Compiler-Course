@@ -31,6 +31,7 @@ structure Ast = Ast
     | EMPTY_ARRAY | START_ARRAY | END_ARRAY | POUND
     | PRINT
     | DIM
+    | OF | BAR | TYPE_WORD | CASE | NEW
     | TYPE_BOOL | TYPE_FLOAT | TYPE_INT | COLON
     | EOF
 %nonterm LETDEF of Ast.ast
@@ -45,10 +46,32 @@ structure Ast = Ast
        | DO_BLOCK of Ast.ast
        | PRIMITIVE_TYPE of LLVM.Type
        | TYPE of LLVM.Type
+       | TYPES of LLVM.UserType list
+       | TYPE_DEF of LLVM.UserType
+       | TYPE_FORMS of (string*(LLVM.Type list)) list
+       | TYPE_FORM of string*(LLVM.Type list)
+       | TYPE_LIST of LLVM.Type list
+       | ID_LIST of string list
+       | CASE_THENS of (string*string list*Ast.ast) list
+       | CASE_THEN of string*string list*Ast.ast
 
 %%
 
-START : STATEMENT EOF             (STATEMENT)
+START : TYPES STATEMENT EOF       (Ast.Program (TYPES,STATEMENT))
+      | STATEMENT EOF             (Ast.Program ([],STATEMENT))
+
+TYPES : TYPE_DEF                  ([TYPE_DEF])
+      | TYPE_DEF TYPES            (TYPE_DEF::TYPES)
+
+TYPE_DEF : TYPE_WORD ID EQ TYPE_FORMS  ((ID,TYPE_FORMS))
+
+TYPE_FORMS : TYPE_FORM                  ([TYPE_FORM])
+           | TYPE_FORM BAR TYPE_FORMS   (TYPE_FORM::TYPE_FORMS)
+
+TYPE_FORM : ID OF TYPE_LIST       ((ID,TYPE_LIST))
+
+TYPE_LIST : TYPE                  ([TYPE])
+          | TYPE MULT TYPE_LIST   (TYPE::TYPE_LIST)
 
 STATEMENT : EXP                   (EXP)
           | DO_BLOCK              (DO_BLOCK)
@@ -78,6 +101,11 @@ EXP : TERM                        (TERM)
     | ID ARRAY_INDEX ASSIGN EXP   (Ast.AssignArray(ID,ARRAY_INDEX,EXP))
     | IF EXP THEN STATEMENT ELSE STATEMENT   (Ast.If(EXP,STATEMENT1,STATEMENT2))
     | FOR LPAREN EXP SEMICOLON EXP SEMICOLON EXP RPAREN STATEMENT   (Ast.For(EXP1,EXP2,EXP3,STATEMENT1))
+    | CASE EXP OF CASE_THENS      (Ast.Case(EXP,CASE_THENS))
+
+CASE_THENS : CASE_THEN            ([CASE_THEN])
+           | CASE_THEN CASE_THENS (CASE_THEN::CASE_THENS)
+CASE_THEN : ID LPAREN ID_LIST RPAREN THEN EXP  (ID,ID_LIST,EXP)
 
 TERM : ID                         (Ast.Var(ID))
      | ID ARRAY_INDEX             (Ast.ArrayIndex(ID,ARRAY_INDEX))
@@ -101,6 +129,8 @@ EXPLIST : EXP                     ([EXP])
         | EXP COMMA EXPLIST       (EXP::EXPLIST)
         | EXP SEMICOLON EXPLIST       (EXP::EXPLIST)
 
+ID_LIST : ID                      ([ID])
+        | ID COMMA ID_LIST        (ID::ID_LIST)
 
 LETDEF : LET ID EQ STATEMENT IN STATEMENT                           (Ast.Let(ID,STATEMENT1,STATEMENT2))
        | FUN ID LPAREN PARAMS RPAREN COLON TYPE EQ STATEMENT IN STATEMENT   (Ast.Fun(ID,PARAMS,TYPE,STATEMENT1,STATEMENT2))
@@ -110,6 +140,7 @@ PARAMS : ID COLON TYPE                      ([(ID,TYPE)])
 
 TYPE : PRIMITIVE_TYPE                                         (PRIMITIVE_TYPE)
      | START_ARRAY PRIMITIVE_TYPE END_ARRAY ARRAY_DIM         (foldr (fn (d,t) => LLVM.array (d,t)) PRIMITIVE_TYPE ARRAY_DIM)
+     | ID                                                     (LLVM.usertype ID)
 
 PRIMITIVE_TYPE : TYPE_INT                        (LLVM.i32)
                | TYPE_FLOAT                      (LLVM.float)

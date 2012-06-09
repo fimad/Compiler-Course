@@ -2,7 +2,18 @@
 
 structure LLVM = 
 struct
-  datatype Type = notype | i8 | i32 | i1 | float | array of int*Type | ptr of Type
+  datatype Type
+    = notype
+    | usertype of string 
+    | i1
+    | i8
+    | i32
+    | float
+    | array of int*Type
+    | ptr of Type
+    | usertype_form of string*string (*used in intermediate operations when dealing with forms*)
+    | usertype_parent
+  type UserType = string*((string*(Type list)) list)(*type name, forms*) (*forms = (form name, types in form)*)
   type Result = string
   datatype Arg = 
     Int of int
@@ -47,20 +58,76 @@ struct
 (* An entire program is just a collection of Methods *)
   type Program = Method list
 
-  fun sizeOfType i32 = 32
-    | sizeOfType i8 = 8
-    | sizeOfType (ptr _) = 32
-    | sizeOfType float = 64
+  fun isPrimitive i32 = true
+    | isPrimitive i8 = true
+    | isPrimitive i1 = true
+    | isPrimitive float = true
+    | isPrimitive (ptr _) = true (*pointers are primitives?*)
+    | isPrimitive _ = false
+
+  (*hacks for user types*)
+  exception LLVMError of string;
+  val userTypeScope = ref []
+  fun addUserType ut = userTypeScope := ut::(!userTypeScope)
+  fun isUserType name = List.exists (fn (name',_) => name = name') (!userTypeScope)
+  fun isUserTypeForm form = List.exists (fn (_,forms) => List.exists (fn (form',_) => form = form') forms) (!userTypeScope)
+  fun getUserType name = (case (List.filter (fn (name',_) => name = name') (!userTypeScope)) of
+    [] => raise (LLVMError (concat ["User type '",name,"' does not exist!"]))
+    | (x::_) => x)
+  fun getTypeForForm form = (case (List.filter (fn (_,forms) => List.exists (fn (f,_) => f=form) forms) (!userTypeScope)) of
+    [] => raise (LLVMError (concat ["No user type has the form '",form,"'!"]))
+    | ((name,_)::_) => usertype name)
+  fun getUserTypeForForm form = let
+      val (usertype name) = getTypeForForm form
+    in getUserType name end
+  fun getFormTypes form = (case (List.filter (fn (f,_) => f=form) (#2 ((getUserTypeForForm) form))) of
+    [] => raise (LLVMError (concat ["No user type has the form '",form,"'!"]))
+    | ((_,types)::_) => types)
+  fun getFormIndex form = let
+      fun getIndex i ((f,_)::fs) = if form = f then i else getIndex (i+1) fs (*should throw error before it reaches end of list*)
+      val (_,forms) = (getUserTypeForForm) form
+    in getIndex 0 forms end
+  fun getIndexForForm name i = let
+      val (name,forms) = getUserType name
+      val _ = if length forms < i then raise (LLVMError "Index is TOO HIGH! should never happen though...") else ()
+    in
+      List.nth (forms,i)
+    end
+
+  fun sizeOfType i32 = 4
+    | sizeOfType i8 = 1
+    | sizeOfType (ptr _) = 4
+    | sizeOfType float = 8
     | sizeOfType (array (size,ty)) = size*(sizeOfType ty)
+    | sizeOfType (usertype name) = let
+        val (ut,forms) = getUserType name
+        val sizes = (map (fn (_,ts) => foldr (op +) 0 (map sizeOfType (map (fn t => if isPrimitive t then t else ptr t) ts))) forms)
+        val maxSize = foldr Int.max 0 sizes
+      in
+        maxSize + 4 (* the 4 is for the form int *)
+      end
 
   fun printType i32 = "i32"
     | printType i8 = "i8"
     | printType i1 = "i1"
     | printType float = "double"
+    | printType usertype_parent = "%T"
     | printType (ptr ty) = concat [printType ty,"*"]
     (*| printType (array (size,ty)) = printType (ptr ty)*)
     | printType (array (size,ty)) = concat ["[",(Int.toString size)," x ",(printType ty),"]"]
+    | printType (usertype _) = printType (ptr i8)
+    | printType (usertype_form (name,form)) = concat ["%T.",name,".",form]
     | printType notype = ""
+
+  fun printUserType (name,forms) = let
+      fun printTypes [] = []
+        | printTypes [t] = [printType t]
+        | printTypes (t::ts) = (printType t)::","::(printTypes ts)
+      fun printForm name (form,types) = 
+        concat (["%T.",name,".",form," = type {"]@(printTypes types)@["}\n"])
+    in
+      concat (map (printForm name) forms)
+    end
 
   fun arrayType (array (size,array sub)) = arrayType (array sub)
     | arrayType (array (size,ty)) = SOME ty
@@ -225,7 +292,10 @@ struct
     end
 
   fun printProgram program = concat [
-        "@.print_int_str = private constant [4 x i8] c\"%d\\0A\\00\", align 1\n"
+        "%T = type { i32, i8 }\n"
+      , concat (map printUserType (!userTypeScope))
+      , "\n"
+      , "@.print_int_str = private constant [4 x i8] c\"%d\\0A\\00\", align 1\n"
       , "@.print_float_str = private constant [4 x i8] c\"%f\\0A\\00\", align 1\n\n"
       , (foldl (fn (a,b) => concat [a,"\n",b]) "" (map printMethod program))
       , "declare i32 @printf(i8*, ...)\n"

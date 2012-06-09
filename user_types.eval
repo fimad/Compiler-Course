@@ -1,0 +1,13 @@
+type myType
+  = IntPair of int*int
+  | FloatPair of float*float
+type weird
+  = weird of myType*myType
+
+let t = IntPair (1,4) in
+let f = FloatPair (5,6) in
+case t of
+  IntPair (a,b) then
+    print a
+  FloatPair (a,b) then
+    print b

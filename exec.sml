@@ -57,8 +57,11 @@ val optimizeLevel =
 val shouldDot = shouldArg "-dot"
 
 val _ = LLVM_Translate.compile result handle (LLVM_Translate.TranslationError what) => let
-  val _ = (print (concat ["Translation Error: ",what,"\n"]), OS.Process.exit OS.Process.failure)
-  in () end
+    val _ = (print (concat ["Translation Error: ",what,"\n"]), OS.Process.exit OS.Process.failure)
+    in () end
+  handle (LLVM.LLVMError what) => let
+    val _ = (print (concat ["Translation Error: ",what,"\n"]), OS.Process.exit OS.Process.failure)
+    in () end
 val program = LLVM_Translate.getProgram ()
 fun optimizeMethod (name,ty,args,code) = let
     val bbGraph = SSA.completeSSA (BB.createBBGraph code)

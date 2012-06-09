@@ -26,6 +26,10 @@ ws = [\ \t];
 %%
 \n       => (pos := (!pos) + 1; lex());
 {ws}+    => (lex());
+"type"   => (Tokens.TYPE_WORD(!pos,!pos));
+"of"     => (Tokens.OF(!pos,!pos));
+"|"      => (Tokens.BAR(!pos,!pos));
+"case"   => (Tokens.CASE(!pos,!pos));
 "int"    => (Tokens.TYPE_INT(!pos,!pos));
 "float"  => (Tokens.TYPE_FLOAT(!pos,!pos));
 "bool"   => (Tokens.TYPE_BOOL(!pos,!pos));

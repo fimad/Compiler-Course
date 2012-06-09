@@ -1,0 +1,10 @@
+type myType
+  = IntPair of int*int
+  | FloatPair of float*float
+type weird
+  = weird of myType*myType
+
+do
+  weird (IntPair(1,2),FloatPair(0.47,0.42)) ;
+  pass
+end
