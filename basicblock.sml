@@ -160,6 +160,7 @@ struct
         | op2def (code as (LLVM.Alias ((LLVM.Variable s),_))) =  [(s,code)]
         | op2def (code as (LLVM.ZExt (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.SiToFp (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.Bitcast (s,_,_,_))) =  [(s,code)]
         | op2def _ = []
     in
       List.concat (map op2def (code bb))
@@ -202,6 +203,7 @@ struct
         | op2use (code as (LLVM.Alias (_,a))) = arg2use code a
         | op2use (code as (LLVM.ZExt (_,_,a1,_))) = (arg2use code a1)
         | op2use (code as (LLVM.SiToFp (_,_,a1,_))) = (arg2use code a1)
+        | op2use (code as (LLVM.Bitcast (_,_,a1,_))) = (arg2use code a1)
         | op2use _ = []
       fun equals ((a,_),(b,_)) = a = b
     in

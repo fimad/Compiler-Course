@@ -51,6 +51,9 @@ struct
             | (LLVM.Call (_,a1,a2,a3)) => LLVM.Call (newRes,a1,a2,a3)
             | (LLVM.Phi (_,a1)) => LLVM.Phi (newRes,a1)
             | (LLVM.Alias (_,a)) => LLVM.Alias ((LLVM.Variable newRes),a)
+            | (LLVM.ZExt (_,t1,a,t2)) => LLVM.ZExt (newRes,t1,a,t2)
+            | (LLVM.SiToFp (_,t1,a,t2)) => LLVM.SiToFp (newRes,t1,a,t2)
+            | (LLVM.Bitcast (_,t1,a,t2)) => LLVM.Bitcast (newRes,t1,a,t2)
             | any => any)]
         | setResult_help (x::xs) = x::(setResult_help xs)
     in
@@ -250,10 +253,15 @@ struct
     end
   | translate (Ast.EmptyArray (pty,dims)) scope fscope =  let
       val l = makenextvar ()
+      val l2 = makenextvar ()
       val ty = llvmTypeForDim pty dims
-      val code = [LLVM.Alloca (l,ty,1)]
+      (*val code = [LLVM.Alloca (l,ty,1)]*)
+      val code = [
+          LLVM.Call (l,LLVM.ptr LLVM.i8,"malloc",[(LLVM.Int (LLVM.sizeOfType ty),LLVM.i32)])
+        , LLVM.Bitcast (l2,LLVM.ptr LLVM.i8,LLVM.Variable l,LLVM.ptr ty)
+      ]
     in
-      (l,ty,code)
+      (l2,ty,code)
     end
   | translate (Ast.ArrayIndex (id,indices)) scope fscope = 
       (case getTypeForVar scope id of
@@ -398,6 +406,10 @@ struct
       val argsAndCodes = map (evalArg scope fscope) exps
       val code = (foldr (op @) [] (map (#1) argsAndCodes))
       val args = (map (fn (_,r,t) => (r,t)) argsAndCodes)
+      (*change arrays so that they are passed as pointers*)
+      val args = map (fn (x,ty) => case ty of
+          LLVM.array _ => (x,LLVM.ptr ty)
+          | _ => (x,ty)) args
       val l = makenextvar ()
       val ty = typeForFunc v fscope
     in
@@ -513,6 +525,11 @@ struct
       fun zipInt [] = []
         | zipInt (x::xs) = (x,LLVM.i32)::(zipInt xs)
       val (fcode,farg,fty) = evalArg (xids@scope) fscope fexp
+      (* change xids so that it doesn't affect the scope*)
+      (* arrays are weird, sometimes the look like pointers, sometimes not..*)
+      val xids = map (fn (x,ty) => case ty of
+          LLVM.array _ => (x,LLVM.ptr ty)
+          | _ => (x,ty)) xids
       val (alias_code,[var]) = ensureVars [farg]
       val (cast_code,ty) = resolveType' [] ty [(var,fty)]
       val methodBody = 

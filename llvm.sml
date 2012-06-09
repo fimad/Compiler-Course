@@ -2,7 +2,7 @@
 
 structure LLVM = 
 struct
-  datatype Type = notype | i32 | i1 | float | array of int*Type | ptr of Type
+  datatype Type = notype | i8 | i32 | i1 | float | array of int*Type | ptr of Type
   type Result = string
   datatype Arg = 
     Int of int
@@ -14,6 +14,7 @@ struct
     DefnLabel of string
     | ZExt of Result*Type*Arg*Type
     | SiToFp of Result*Type*Arg*Type
+    | Bitcast of Result*Type*Arg*Type
     | Alias of Arg*Arg (*Not an actual byte code, but is used in replacing variables with constant expressions*)
     | Load of Result*Type*Arg
     | Store of Type*Arg*Arg
@@ -46,10 +47,18 @@ struct
 (* An entire program is just a collection of Methods *)
   type Program = Method list
 
+  fun sizeOfType i32 = 32
+    | sizeOfType i8 = 8
+    | sizeOfType (ptr _) = 32
+    | sizeOfType float = 64
+    | sizeOfType (array (size,ty)) = size*(sizeOfType ty)
+
   fun printType i32 = "i32"
+    | printType i8 = "i8"
     | printType i1 = "i1"
     | printType float = "double"
     | printType (ptr ty) = concat [printType ty,"*"]
+    (*| printType (array (size,ty)) = printType (ptr ty)*)
     | printType (array (size,ty)) = concat ["[",(Int.toString size)," x ",(printType ty),"]"]
     | printType notype = ""
 
@@ -112,6 +121,7 @@ struct
   fun resultOf (Load (res,ty,arg)) = SOME res
     | resultOf (ZExt (res,_,_,_)) = SOME res
     | resultOf (SiToFp (res,_,_,_)) = SOME res
+    | resultOf (Bitcast (res,_,_,_)) = SOME res
     | resultOf (Add (res,ty,a1,a2)) = SOME res
     | resultOf (Sub (res,ty,a1,a2)) = SOME res
     | resultOf (Mul (res,ty,a1,a2)) = SOME res
@@ -138,6 +148,7 @@ struct
         fun replOP (Load (res,ty,a1)) = Load (res,ty,(replArg a1))
           | replOP (ZExt (res,ty1,a1,ty2)) = ZExt (res,ty1,(replArg a1),ty2)
           | replOP (SiToFp (res,ty1,a1,ty2)) = SiToFp (res,ty1,(replArg a1),ty2)
+          | replOP (Bitcast (res,ty1,a1,ty2)) = Bitcast (res,ty1,(replArg a1),ty2)
           | replOP (Store (ty,a1,a2)) = Store (ty,(replArg a1),(replArg a2))
           | replOP (GetElementPtr (res,ty1,a1,a2)) = GetElementPtr (res,ty1,(replArg a1),(replArg a2))
           | replOP (Add (res,ty,a1,a2)) = Add (res,ty,(replArg a1),(replArg a2))
@@ -167,6 +178,7 @@ struct
     | printOP (ZExt (res,ty1,arg,ty2)) =  concat [h_printROP res "zext" ty1 [arg]," to ",printType ty2]
     (*| printOP (ZExt (res,ty1,arg,ty2)) =  concat [h_printROP res "zext" notype [], printType ty1," ", printArg arg," to ",printType ty2]*)
     | printOP (SiToFp (res,ty1,arg,ty2)) =  concat [h_printROP res "sitofp" ty1 [arg]," to ",printType ty2]
+    | printOP (Bitcast (res,ty1,arg,ty2)) =  concat [h_printROP res "bitcast" ty1 [arg]," to ",printType ty2]
     | printOP (Load (res,ty,arg)) =  h_printROP res "load" ty [arg]
     | printOP (GetElementPtr (res,ty1,a1,a2)) = concat ["%",res," = getelementptr ",(printType ty1)," ",(printArg a1),", i32 0",", i32 ",(printArg a2)]
     | printOP (Store (ty,a1,a2)) =  concat [(h_printOP "store" ty [a1]),", ",(printType ty),"* ",(printArg a2)]
@@ -240,6 +252,7 @@ fun replaceInOp aliases code =  let
       | replaceInOp' (Store (t,a1,a2)) = Store (t,(replaceArg a1),(replaceArg a2))
       | replaceInOp' (ZExt (res,t1,a1,t2)) = ZExt (res,t1,(replaceArg a1),t2)
       | replaceInOp' (SiToFp (res,t1,a1,t2)) = SiToFp (res,t1,(replaceArg a1),t2)
+      | replaceInOp' (Bitcast (res,t1,a1,t2)) = Bitcast (res,t1,(replaceArg a1),t2)
       | replaceInOp' (GetElementPtr (r,t1,a1,a2)) = GetElementPtr (r,t1,(replaceArg a1),(replaceArg a2))
       | replaceInOp' (Add (r,t,a1,a2)) = Add (r,t,(replaceArg a1),(replaceArg a2))
       | replaceInOp' (Sub (r,t,a1,a2)) = Sub (r,t,(replaceArg a1),(replaceArg a2))

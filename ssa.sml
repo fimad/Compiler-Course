@@ -255,6 +255,7 @@ fun renameVariables bbg = let
                         | (LLVM.Phi (r,args)) => LLVM.Phi ((change_result r), args)
                         | (LLVM.ZExt (r,t1,a1,t2)) => LLVM.ZExt ((change_result r),t1,(change_arg a1),t2)
                         | (LLVM.SiToFp (r,t1,a1,t2)) => LLVM.SiToFp ((change_result r),t1,(change_arg a1),t2)
+                        | (LLVM.Bitcast (r,t1,a1,t2)) => LLVM.Bitcast ((change_result r),t1,(change_arg a1),t2)
                         | (LLVM.Alias ((LLVM.Variable r),a)) => LLVM.Alias (LLVM.Variable (change_result r), (change_arg a))
                         | x => x (* default: don't change anything *)
                     end
