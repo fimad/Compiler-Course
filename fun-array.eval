@@ -3,8 +3,13 @@ fun test(a : [int]#10) : int=
   let i = 0 in do
     for(i:=0; i<dim(0,a); i:=i+1)
       sum := sum + a[i];
+    for(i:=0; i<dim(0,a); i:=i+1)
+      a[i] := ~1;
     sum
   end
 in
-  let a = [1,2,3,4,5,6,7,8,9,10] in
-  print test(a)
+  let a = [[1,2,3,4,5,6,7,8,9,10]] in
+  do
+    print test(a[0]);
+    print a[0][0]
+  end

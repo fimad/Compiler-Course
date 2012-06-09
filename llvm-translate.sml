@@ -126,7 +126,8 @@ struct
     | arrayBaseType ty = ty
 
   and calculateArrayIndex ptr ty [] [] _ _ = (ptr,[],ty)
-    | calculateArrayIndex ptr ty [] _ _ _ = raise (TranslationError (concat ["not enuff indices... yo.. in '",ptr,"'"]))
+    | calculateArrayIndex ptr ty [] _ _ _ = (ptr,[],ty)
+    (*| calculateArrayIndex ptr ty [] _ _ _ = raise (TranslationError (concat ["not enuff indices... yo.. in '",ptr,"'"]))*)
     | calculateArrayIndex ptr ty _ [] _ _ = raise (TranslationError (concat ["Indices into array '",ptr,"' have more dimensions than definition."]))
     | calculateArrayIndex ptr ty (i::indices) (d::dims) scope fscope = let
         val (i_code,i_res,i_ty) = evalArg scope fscope i 
@@ -268,12 +269,17 @@ struct
         (ty as LLVM.array _) => let
             (*val ty = llvmTypeForDim LLVM.i32 dim*)
             val dim = dimFromLLVMType ty
-            val base_ty = arrayBaseType ty
+            (*val base_ty = arrayBaseType ty*)
             val (i_ptr,i_code,i_ty) = calculateArrayIndex id ty indices dim scope fscope
-            val res = makenextvar ()
-            val code = i_code@[LLVM.Load (res,LLVM.ptr i_ty,LLVM.Variable i_ptr)]
+            val res' = makenextvar ()
+            (* if we are indexing a sub array then we don't need to load *)
+            val (res,code) = (
+                case i_ty of
+                  LLVM.array _ => (i_ptr,i_code)
+                  | _ => (res',i_code@[LLVM.Load (res',LLVM.ptr i_ty,LLVM.Variable i_ptr)])
+              )
           in
-            (res,base_ty,code)
+            (res,i_ty,code)
           end
         | _ => raise (TranslationError (concat ["Attempt to index non-array variable '",id,"'"]))
       )
