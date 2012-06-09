@@ -1,4 +1,4 @@
 fun test( f:float, i:int, b:bool) : float =
   f+i+b
 in
-print test(0.12345,46,true)
+  print test(0.12345,46,true)

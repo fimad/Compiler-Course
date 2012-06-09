@@ -229,15 +229,20 @@ struct
 
       val dim = arrayDimFromExps exps scope fscope
       val new_res = makenextvar ()
-      (*TODO FIND TYPE FOR INITIALIZED ARRAYS*)
-      val (res,ty,create_code) = translate (Ast.EmptyArray (LLVM.i32,dim)) scope fscope
+      (* Find the highest type in expressions *)
+      val ((_,ty)::types) = map (fn d => let val (r,t,_) = translate (getExpForIndex d exps) scope fscope in (r,t) end) (enumDims dim)
+      val high_type = highestType ty types
+
+      val (res,ty,create_code) = translate (Ast.EmptyArray (high_type,dim)) scope fscope
       (*val _ = map (fn d => (map (print o Int.toString) d,print "\n")) (enumDims dim)*)
 
       val update_code = foldl (fn (i,prev_code) => let
-              val (ptr,ptr_code,ty) = calculateArrayIndex res (llvmTypeForDim LLVM.i32 dim) (map Ast.Int i) dim scope fscope
+              val (ptr,ptr_code,ty) = calculateArrayIndex res (llvmTypeForDim high_type dim) (map Ast.Int i) dim scope fscope
               val (exp_code,exp_res,exp_ty) = evalArg scope fscope (getExpForIndex i exps)
+              val (alias_code,[var]) = ensureVars [exp_res]
+              val (exp_cast,exp_ty) = resolveType' [] high_type [(var,exp_ty)]
             in
-              prev_code@ptr_code@exp_code@[LLVM.Store (ty,exp_res,LLVM.Variable ptr)]
+              prev_code@ptr_code@exp_code@alias_code@exp_cast@[LLVM.Store (high_type,LLVM.Variable var,LLVM.Variable ptr)]
             end
           ) [] (enumDims dim)
     in
@@ -486,7 +491,7 @@ struct
       (*too tired to think of how to do this in an intelligent way, just grab the type of the expression...*)
       val (_,vty,_) = translate exp scope fscope
       val new_scope = (id,(case exp of
-              (Ast.Array exps) => llvmTypeForDim LLVM.i32 (arrayDimFromExps exps scope fscope)
+              (Ast.Array exps) => llvmTypeForDim (arrayBaseType vty) (arrayDimFromExps exps scope fscope)
             | (Ast.EmptyArray (ty,dim)) => llvmTypeForDim ty dim
             | _ => vty
           ))::scope

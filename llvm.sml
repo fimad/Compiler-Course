@@ -60,7 +60,7 @@ struct
   fun printPosReal exp f =
       if f >= 10.0 then printPosReal (exp+1) (f/10.0)
       else if f < 1.0 then printPosReal (exp-1) (f*10.0)
-      else concat [Real.toString f,"e",printArg (Int exp)]
+      else concat [Real.toString f,if(Real.== (#whole (Real.split f),f)) then ".0" else "","e",printArg (Int exp)]
 
   and printArg (Int i) = 
     (*sml formats negative numbers with a ~ instead of a -*)
