@@ -32,7 +32,7 @@ sig
     | More of ast*ast
     | MoreEq of ast*ast
     | Apply of ast*(ast list)
-    | Case of ast*(string*string list*ast) list
+    | Case of ast*(string*string list*ast) list*ast
     | If of ast*ast*ast
     | For of ast*ast*ast*ast
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
@@ -91,7 +91,7 @@ struct
     | More of ast*ast
     | MoreEq of ast*ast
     | Apply of ast*(ast list)
-    | Case of ast*(string*string list*ast) list
+    | Case of ast*(string*string list*ast) list*ast
     | If of ast*ast*ast
     | For of ast*ast*ast*ast
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)

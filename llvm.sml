@@ -93,9 +93,15 @@ struct
     in
       List.nth (forms,i)
     end
+  fun isFormOfUserType form name = let
+      val (_,forms) = getUserType name
+    in
+      List.exists (fn (form',_) => form' = form) forms
+    end
 
   fun sizeOfType i32 = 4
     | sizeOfType i8 = 1
+    | sizeOfType i1 = 1
     | sizeOfType (ptr _) = 4
     | sizeOfType float = 8
     | sizeOfType (array (size,ty)) = size*(sizeOfType ty)
@@ -247,7 +253,7 @@ struct
     | printOP (SiToFp (res,ty1,arg,ty2)) =  concat [h_printROP res "sitofp" ty1 [arg]," to ",printType ty2]
     | printOP (Bitcast (res,ty1,arg,ty2)) =  concat [h_printROP res "bitcast" ty1 [arg]," to ",printType ty2]
     | printOP (Load (res,ty,arg)) =  h_printROP res "load" ty [arg]
-    | printOP (GetElementPtr (res,ty1,a1,a2)) = concat ["%",res," = getelementptr ",(printType ty1)," ",(printArg a1),", i32 0",", i32 ",(printArg a2)]
+    | printOP (GetElementPtr (res,ty1,a1,a2)) = concat ["%",res," = getelementptr inbounds ",(printType ty1)," ",(printArg a1),", i32 0",", i32 ",(printArg a2)]
     | printOP (Store (ty,a1,a2)) =  concat [(h_printOP "store" ty [a1]),", ",(printType ty),"* ",(printArg a2)]
     | printOP (Add (res,float,a1,a2)) =  h_printROP res "fadd" float [a1, a2]
     | printOP (Add (res,ty,a1,a2)) =  h_printROP res "add" ty [a1, a2]

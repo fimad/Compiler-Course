@@ -31,7 +31,7 @@ structure Ast = Ast
     | EMPTY_ARRAY | START_ARRAY | END_ARRAY | POUND
     | PRINT
     | DIM
-    | OF | BAR | TYPE_WORD | CASE | NEW
+    | OF | BAR | TYPE_WORD | CASE | OTHERWISE
     | TYPE_BOOL | TYPE_FLOAT | TYPE_INT | COLON
     | EOF
 %nonterm LETDEF of Ast.ast
@@ -54,6 +54,7 @@ structure Ast = Ast
        | ID_LIST of string list
        | CASE_THENS of (string*string list*Ast.ast) list
        | CASE_THEN of string*string list*Ast.ast
+       | OTHERWISE_THEN of Ast.ast
 
 %%
 
@@ -101,11 +102,14 @@ EXP : TERM                        (TERM)
     | ID ARRAY_INDEX ASSIGN EXP   (Ast.AssignArray(ID,ARRAY_INDEX,EXP))
     | IF EXP THEN STATEMENT ELSE STATEMENT   (Ast.If(EXP,STATEMENT1,STATEMENT2))
     | FOR LPAREN EXP SEMICOLON EXP SEMICOLON EXP RPAREN STATEMENT   (Ast.For(EXP1,EXP2,EXP3,STATEMENT1))
-    | CASE EXP OF CASE_THENS      (Ast.Case(EXP,CASE_THENS))
+    | CASE EXP OF CASE_THENS OTHERWISE_THEN      (Ast.Case(EXP,CASE_THENS,OTHERWISE_THEN))
 
 CASE_THENS : CASE_THEN            ([CASE_THEN])
            | CASE_THEN CASE_THENS (CASE_THEN::CASE_THENS)
+
 CASE_THEN : ID LPAREN ID_LIST RPAREN THEN EXP  (ID,ID_LIST,EXP)
+
+OTHERWISE_THEN : OTHERWISE THEN EXP (EXP)
 
 TERM : ID                         (Ast.Var(ID))
      | ID ARRAY_INDEX             (Ast.ArrayIndex(ID,ARRAY_INDEX))

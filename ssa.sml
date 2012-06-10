@@ -262,14 +262,14 @@ fun renameVariables bbg = let
                 ) (BB.code bb)
             (* set bb's code to new_code *)
             val _ = (new_bbg := BB.replace (!new_bbg) (BB.set_code bb new_code))
-    
+
             (*set the content of each of the successor's phi instructions*)
             val _ = linear_map (fn s => let
                   val s = BB.refresh (!new_bbg) s
                   val (_,my_label) = BB.get_label (!new_bbg) bb
                   val new_code = map (
                       fn (LLVM.Phi (r,args)) =>
-                          LLVM.Phi (r,map (fn (v as LLVM.Variable v_str,(l as LLVM.Variable l_str)) => ((if x = v_str andalso my_label = l_str then LLVM.Variable (!my_last_x) else v),l)) args)
+                          LLVM.Phi (r,(map (fn (v as LLVM.Variable v_str,(l as LLVM.Variable l_str)) => ((if x = v_str andalso my_label = l_str then LLVM.Variable (!my_last_x) else v),l)) args))
                        | x => x
                     ) (BB.code s)
                   val _ = (new_bbg := BB.replace (!new_bbg) (BB.set_code s new_code))
@@ -308,6 +308,27 @@ fun removeAliases bbg = let
     (* bbg *)
   end
 
+(* Well fuck, llvm checks this... *)
+(*
+fun fixPhis bbg = let
+    (* it happens occaisonaly in programs with bugs, that an arg will reference an undefined variable %_#__0, get rid of these so it still compiles *)
+    fun stripBadArgs [] = []
+      | stripBadArgs ((arg as (LLVM.Variable arg_str,_))::args) = let
+          (*val _ = print (concat ["HEY: ",arg_str,"\n"])*)
+        in
+          (case (String.explode arg_str,(rev o String.explode) arg_str) of
+            (((#"_")::_),((#"0")::(#"_")::(#"_")::_)) => stripBadArgs args (*this is a bad arg, get rid of it!*)
+            | _ => arg::(stripBadArgs args))
+        end
+    fun fixPhisInCode code =
+      map (
+        fn (LLVM.Phi (r,args)) => LLVM.Phi (r,stripBadArgs args) | x => x
+      ) code
+  in
+    foldl (fn (bb,bbg) => BB.replace bbg (BB.set_code bb (fixPhisInCode (BB.code bb)) )) bbg (BB.to_list bbg)
+  end
+*)
+    
 fun completeSSA bbg = (removeAliases o renameVariables o resolvePhi) bbg
 
 end

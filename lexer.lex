@@ -30,6 +30,7 @@ ws = [\ \t];
 "of"     => (Tokens.OF(!pos,!pos));
 "|"      => (Tokens.BAR(!pos,!pos));
 "case"   => (Tokens.CASE(!pos,!pos));
+"otherwise"   => (Tokens.OTHERWISE(!pos,!pos));
 "int"    => (Tokens.TYPE_INT(!pos,!pos));
 "float"  => (Tokens.TYPE_FLOAT(!pos,!pos));
 "bool"   => (Tokens.TYPE_BOOL(!pos,!pos));

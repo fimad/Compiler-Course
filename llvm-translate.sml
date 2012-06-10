@@ -54,6 +54,8 @@ struct
             | (LLVM.ZExt (_,t1,a,t2)) => LLVM.ZExt (newRes,t1,a,t2)
             | (LLVM.SiToFp (_,t1,a,t2)) => LLVM.SiToFp (newRes,t1,a,t2)
             | (LLVM.Bitcast (_,t1,a,t2)) => LLVM.Bitcast (newRes,t1,a,t2)
+            | (LLVM.GetElementPtr (_,t,a1,a2)) => LLVM.GetElementPtr (newRes,t,a1,a2)
+            | (LLVM.Print (_,t,a)) => LLVM.Print (newRes,t,a)
             | any => any)]
         | setResult_help (x::xs) = x::(setResult_help xs)
     in
@@ -78,6 +80,7 @@ struct
       else if acc = LLVM.i1 orelse ty = LLVM.i1 then highestType LLVM.i32 xs
       else if acc = ty then highestType acc xs
       else raise (TranslationError "Only primitive types may be mixed.")
+  and highestType' ((x,ty)::xs) = highestType ty xs
 
   and resolveType' code ty [] = (code,ty)
     | resolveType' code ty ((x',ty')::xs) =
@@ -417,6 +420,7 @@ struct
         val var_form_type = makenextvar ()
         val var_T_type = makenextvar ()
         val var_form_ptr = makenextvar ()
+        val var_result = makenextvar ()
 
         val (user_type as (LLVM.usertype name)) = LLVM.getTypeForForm form
         val form_type = LLVM.usertype_form (name,form)
@@ -446,10 +450,12 @@ struct
             , LLVM.Store (LLVM.i32,LLVM.Int (LLVM.getFormIndex form),LLVM.Variable var_form_ptr)
             (* grab a pointer to the data portion *)
             , LLVM.GetElementPtr (var_form_type,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,LLVM.Int 1)
-            , LLVM.Bitcast (var_form_type, LLVM.ptr LLVM.i8, LLVM.Variable var_malloc, LLVM.ptr form_type)
-          ]@(initialize 0 (ListPair.zip (types,exps)))
+            , LLVM.Bitcast (var_form_type, LLVM.ptr LLVM.i8, LLVM.Variable var_form_type, LLVM.ptr form_type)
+          ]@(initialize 0 (ListPair.zip (types,exps)))@[
+              LLVM.Alias (LLVM.Variable var_result, LLVM.Variable var_malloc) 
+          ]
       in
-        (var_malloc,user_type,code)
+        (var_result,user_type,code)
       end
     else
       let
@@ -466,6 +472,112 @@ struct
         (l,ty,code@[LLVM.Call (l,ty,v,args)])
       end
   | translate (Ast.Apply _) scope fscope =  raise (TranslationError "Can only apply on variables")
+    (*| Case of ast*(string*string list*ast) list*)
+  | translate (Ast.Case (exp,branches,default_exp)) scope fscope = let
+      val (exp_code,exp_res,exp_ty) = evalArg scope fscope exp
+
+      (* make sure we are dealing with a user type *)
+      val ty_name = case exp_ty of LLVM.usertype name => name | _ => raise (TranslationError "Case statements are only valid on user defined types")
+      (* general idea:
+       extract the form id (DONE)
+       make a function that creates a block for each, and have it return the code along with id and label pairs
+       then turn the id label pairs into jump code
+       *)
+      val var_T_type = makenextvar ()
+      val var_form_ptr = makenextvar ()
+      val var_form = makenextvar ()
+      val var_result = makenextvar () (*result of each case branch*)
+      val label_exit = makenextlabel ()
+      val label_default = makenextlabel ()
+
+      (*set up default exp*)
+      val (def_code,def_res,def_ty) = evalArg scope fscope default_exp
+      val (_,def_code) = setResult var_result (def_res,def_code)
+
+      (* turns an element of the branch list into a (form_id,label,code,ty) tuple *)
+      fun handleBranch (form,xids,then_exp) = let
+          val form_types = LLVM.getFormTypes form
+          val form_id = LLVM.getFormIndex form
+          val _ = if length form_types = length xids then () else raise (TranslationError (concat ["Wrong number of variables for form '",form,"'!"]))
+          
+          val (then_code,then_res,then_ty) = evalArg ((ListPair.zip (xids,form_types))@scope) fscope then_exp
+          val (_,then_code) = setResult var_result (then_res,then_code) (*switch the result for the globally chosen one*)
+
+          val label_branch = makenextlabel ()
+          val var_struct_ptr = makenextvar ()
+
+          fun extractVars i [] = []
+            | extractVars i ((x,ty)::xs) = let
+                val var_x = makenextvar ()
+              in
+                [   LLVM.GetElementPtr (var_x,LLVM.ptr (LLVM.usertype_form (ty_name,form)),LLVM.Variable var_struct_ptr,LLVM.Int i)
+                  , LLVM.Load (x,LLVM.ptr ty,LLVM.Variable var_x)
+                ]@(extractVars (i+1) xs)
+              end
+          val extract_code = extractVars 0 (ListPair.zip (xids,form_types))
+
+          val code =
+            [   (* define the branch label and extract the values *)
+                LLVM.DefnLabel label_branch
+              , LLVM.GetElementPtr (var_struct_ptr,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,LLVM.Int 1)
+              , LLVM.Bitcast (var_struct_ptr, LLVM.ptr LLVM.i8, LLVM.Variable var_struct_ptr, LLVM.ptr (LLVM.usertype_form (ty_name,form)))
+            ]@extract_code@then_code@[
+                LLVM.Br (LLVM.Label label_exit)
+            ]
+        in
+        (form_id,label_branch,code,then_ty)
+        end
+
+      val branch_info = map handleBranch branches
+      (*find the type that every result must be cast to inorder to remain consistent*)
+      val highest_type = highestType def_ty (map (fn b => (var_result,#4 b)) branch_info)
+      (*add casting code to end of each branches code segment*)
+      fun addCastCode (id,label,code,ty) = let
+          val (cast_code,ty) = resolveType' [] highest_type [(var_result,ty)]
+        in (id,label,code@cast_code,highest_type) end
+      val branch_info = map addCastCode branch_info
+
+      (* concat each of the branch segments *)
+      val branch_code = List.concat (map #3 branch_info)
+
+      (* finish setting up the default expression*)
+      val (def_alias,[var_def]) = ensureVars [def_res]
+      val (def_cast,ty) = resolveType' [] highest_type [(var_def,def_ty)]
+
+      (*construct the jump code*)
+      fun makeJumps label_next [] = []
+        | makeJumps label_next ((id,label)::ids) = let
+          val var_cmp = makenextvar ()
+          val label_next_next = makenextlabel ()
+        in
+          [ LLVM.DefnLabel label_next_next
+          , LLVM.CmpEq (var_cmp,LLVM.i32,LLVM.Int id,LLVM.Variable var_form)
+          , LLVM.CndBr (LLVM.Variable var_cmp,(LLVM.Label label),(LLVM.Label label_next))
+          ]::(makeJumps label_next_next ids)
+        end
+
+      val id_label_pairs = (map (fn (id,label,_,_) => (id,label)) branch_info)
+      (* we create the jump blocks in reverse order so we can avoid having to defnlabels next to eachother 
+         so we pass in the exit label, and each block labels itself
+         this means that what ends up being the first block will have a useless label so we tail it to drop it *)
+      val jump_code = (tl o List.concat o rev) (makeJumps label_default id_label_pairs)
+
+      val code =
+        exp_code@[
+            LLVM.Bitcast (var_T_type, exp_ty, exp_res, LLVM.ptr LLVM.usertype_parent)
+          (* get the form tracker *)
+          , LLVM.GetElementPtr (var_form_ptr,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,LLVM.Int 0)
+          , LLVM.Load (var_form,LLVM.ptr LLVM.i32,LLVM.Variable var_form_ptr)
+        ]@jump_code@[
+            LLVM.DefnLabel label_default
+        ]@def_code@def_alias@def_cast@[
+            LLVM.Br (LLVM.Label label_exit)
+        ]@branch_code@[
+            LLVM.DefnLabel label_exit
+        ]
+    in
+      (var_result,highest_type,code)
+    end
   | translate (Ast.For (init_exp,cond_exp,step_exp,doexp)) scope fscope = let
       val cnd_label = makenextlabel ()
       val loop_start_label = makenextlabel ()
