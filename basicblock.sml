@@ -155,8 +155,10 @@ struct
         | op2def (code as (LLVM.Ashr (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Xor (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Call (s,_,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.TailCall (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Phi (s,_))) =  [(s,code)]
         | op2def (code as (LLVM.Print (s,_,_))) =  [(s,code)]
+        | op2def (code as (LLVM.TailPrint (s,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.Alias ((LLVM.Variable s),_))) =  [(s,code)]
         | op2def (code as (LLVM.ZExt (s,_,_,_))) =  [(s,code)]
         | op2def (code as (LLVM.SiToFp (s,_,_,_))) =  [(s,code)]
@@ -195,11 +197,13 @@ struct
         | op2use (code as (LLVM.CndBr (a,_,_))) = arg2use code a
         | op2use (code as (LLVM.Ret (_,a))) = arg2use code a
         | op2use (code as (LLVM.Print (_,_,a))) = arg2use code a
+        | op2use (code as (LLVM.TailPrint (_,_,a))) = arg2use code a
         | op2use (code as (LLVM.And (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Or (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Ashr (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Xor (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Call (_,_,_,args))) = List.concat (map (arg2use code o #1) args)
+        | op2use (code as (LLVM.TailCall (_,_,_,args))) = List.concat (map (arg2use code o #1) args)
         | op2use (code as (LLVM.Alias (_,a))) = arg2use code a
         | op2use (code as (LLVM.ZExt (_,_,a1,_))) = (arg2use code a1)
         | op2use (code as (LLVM.SiToFp (_,_,a1,_))) = (arg2use code a1)

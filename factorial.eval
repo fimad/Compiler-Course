@@ -7,4 +7,8 @@ fun factorial(max : int) : int =
     prod
   end
 in
-  print factorial(10)
+fun factorial_rec(acc : int, max : int) : int =
+  if( max = 0 ) then 1*acc
+  else factorial_rec(max*acc,max-1)
+in
+  print factorial_rec(1,10)

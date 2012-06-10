@@ -1,13 +1,12 @@
-=For Friday
-  -change how variables are handled (DONE)
-    -don't use the stack, use several static variables to map the progress of a single "real" variable throughout the function
-    -to start off with it looks it would be valid to generate "invalid" llvm with just %x = whatever, %x = whatever
-    -then the following steps will properly resolve that
-  -phi insertion
-    -create a theta LLVM opcode  (DONE)
-    -Dominance Frontier (NOT DEBUGED)
-    -add phi
-  -variable renaming
+=For Monday
+  -tail calls
+  -dynamic array sizes
+  -function section
+    -functions have end keyword instead of in
+    -must appear after types before main segment
+  -type parameters
+  -implement lists!!!
+  -change let in to let in end
 
 =For General Correctness
   -available expression analysis does not work for programs with loops
@@ -18,5 +17,3 @@
     -determine which variables are used in inner scope, and make them present in the stack
     -implicit first parameter to functions which is the static frame pointer
   -classes
-  -types
-    -arrays

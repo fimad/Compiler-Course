@@ -146,13 +146,28 @@ fun merge_bb bbg = let
     (!new_bbg)
   end
 
+fun tailcall bbg = let
+      fun insertTailCalls [] = []
+        | insertTailCalls ((LLVM.Ret r)::(LLVM.Call c)::cs) = (LLVM.Ret r)::(insertTailCalls ((LLVM.TailCall c)::cs))
+        | insertTailCalls ((LLVM.TailCall t)::(LLVM.Call c)::cs) = (LLVM.TailCall t)::(insertTailCalls ((LLVM.TailCall c)::cs))
+        | insertTailCalls ((LLVM.TailPrint t)::(LLVM.Call c)::cs) = (LLVM.TailPrint t)::(insertTailCalls ((LLVM.TailCall c)::cs))
+        | insertTailCalls ((LLVM.Ret r)::(LLVM.Print c)::cs) = (LLVM.Ret r)::(insertTailCalls ((LLVM.TailPrint c)::cs))
+        | insertTailCalls ((LLVM.TailCall t)::(LLVM.Print c)::cs) = (LLVM.TailCall t)::(insertTailCalls ((LLVM.TailPrint c)::cs))
+        | insertTailCalls ((LLVM.TailPrint t)::(LLVM.Print c)::cs) = (LLVM.TailPrint t)::(insertTailCalls ((LLVM.TailPrint c)::cs))
+        | insertTailCalls (c::cs) = c::(insertTailCalls cs)
+  in
+    (* foldl (fn (bb,bbg) => BB.replace bbg (BB.set_code bb ((insertTailCalls o BB.code) bb))) bbg (BB.to_list bbg)*)
+    BB.createBBGraph ((rev o insertTailCalls o rev o BB.graph2code) bbg)
+  end
+
 val max_level = 1
 fun optimize i graph = (case i of
     (*
         1 => optimize (i-1) (remove_excess_loads graph)
       | 2 => optimize (i-1) (available_expressions graph)
     *)
-        1 => optimize (i-1) (merge_bb graph)
+        1 => optimize (i-1) (tailcall graph)
+      | 2 => optimize (i-1) (merge_bb graph)
       | _ => graph)
 
 end

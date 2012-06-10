@@ -8,6 +8,7 @@ type weird
 let i = IntPair (1,2) in
 let f = FloatPair (1.0,2.0) in
 let b = BoolPair (true,false) in
+
 case i of
   IntPair (a,b) then
     print b

@@ -49,7 +49,9 @@ struct
     | Ashr of Result*Type*Arg*Arg
     | Xor of Result*Type*Arg*Arg
     | Call of Result*Type*string*((Arg*Type) list)
+    | TailCall of Result*Type*string*((Arg*Type) list)
     | Print of Result*Type*Arg
+    | TailPrint of Result*Type*Arg
     | Raw of string
     | Phi of Result*((Arg*Arg) list) (* Needs to be value/variabe,Label(of the corresponding block) *)
 
@@ -212,6 +214,7 @@ struct
     | resultOf (Alloca (res,ty,num)) = SOME res
     | resultOf (GetElementPtr (res,ty,_,_)) = SOME res
     | resultOf (Call (res,ty,name,args)) = SOME res
+    | resultOf (TailCall (res,ty,name,args)) = SOME res
     | resultOf _ = NONE
 
   fun replaceVar [] code = code
@@ -241,7 +244,9 @@ struct
           | replOP (Ashr (res,ty,a1,a2)) = Ashr (res,ty,(replArg a1),(replArg a2))
           | replOP (Xor (res,ty,a1,a2)) = Xor (res,ty,(replArg a1),(replArg a2))
           | replOP (Call (res,ty,fname,args)) = Call (res,ty,fname,(map (fn (r,t) => (replArg r,t)) args))
+          | replOP (TailCall (res,ty,fname,args)) = TailCall (res,ty,fname,(map (fn (r,t) => (replArg r,t)) args))
           | replOP (Print (res,t,arg)) = Print (res,t,(replArg arg))
+          | replOP (TailPrint (res,t,arg)) = TailPrint (res,t,(replArg arg))
           | replOP (Alias (a1,a2)) = Alias ((replArg a1),(replArg a2))
           | replOP code = code
         val new_code = map replOP code
@@ -278,9 +283,13 @@ struct
     | printOP (Ret (ty,a)) =  h_printOP "ret" ty [a]
     | printOP (Alloca (res,ty,num)) =  concat [h_printROP res "alloca" ty [], ", ", printType i32," ",(Int.toString num)]
     | printOP (Call (res,ty,name,args)) =  concat [(h_printROP res "call" ty [])," @",name,"(",(combArgs (map (fn (x,t)=> concat[printType t," ",printArg x]) args)),")"]
+    | printOP (TailCall (res,ty,name,args)) =  concat [(h_printROP res "tail call" ty [])," @",name,"(",(combArgs (map (fn (x,t)=> concat[printType t," ",printArg x]) args)),")"]
     | printOP (Print (res,i32,arg)) = concat["%",res," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.print_int_str, i32 0, i32 0), i32 ",(printArg arg),")"]
     | printOP (Print (res,i1,arg)) = concat["%",res," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.print_int_str, i32 0, i32 0), i1 ",(printArg arg),")"]
     | printOP (Print (res,float,arg)) = concat["%",res," = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.print_float_str, i32 0, i32 0), double ",(printArg arg),")"]
+    | printOP (TailPrint (res,i32,arg)) = concat["%",res," = tail call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.print_int_str, i32 0, i32 0), i32 ",(printArg arg),")"]
+    | printOP (TailPrint (res,i1,arg)) = concat["%",res," = tail call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.print_int_str, i32 0, i32 0), i1 ",(printArg arg),")"]
+    | printOP (TailPrint (res,float,arg)) = concat["%",res," = tail call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8]* @.print_float_str, i32 0, i32 0), double ",(printArg arg),")"]
     | printOP (Raw str) = str
     | printOP (Phi (res,args)) =  concat ["%",res," = phi i32 ",(combArgs (map (fn (x,y) => concat["[ ",printArg x,",",printArg y,"]"]) args))]
     | printOP (Alias (a1,a2)) = concat ["alias ",(printArg a1)," = ",(printArg a2)]
@@ -348,7 +357,9 @@ fun replaceInOp aliases code =  let
       | replaceInOp' (Ashr (r,t,a1,a2)) = Ashr (r,t,(replaceArg a1),(replaceArg a2))
       | replaceInOp' (Xor (r,t,a1,a2)) = Xor (r,t,(replaceArg a1),(replaceArg a2))
       | replaceInOp' (Print (r,t,a1)) = Print (r,t,(replaceArg a1))
+      | replaceInOp' (TailPrint (r,t,a1)) = TailPrint (r,t,(replaceArg a1))
       | replaceInOp' (Call (r,t,func,args)) = Call (r,t,func,(map (fn (r,t) => (replaceArg r,t)) args))
+      | replaceInOp' (TailCall (r,t,func,args)) = TailCall (r,t,func,(map (fn (r,t) => (replaceArg r,t)) args))
       | replaceInOp' (Phi (r,args)) = Phi (r,(map (fn (v,l)=>((replaceArg v),l)) args))
       | replaceInOp' x = x
     in replaceInOp' code end
