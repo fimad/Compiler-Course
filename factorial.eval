@@ -1,4 +1,4 @@
-fun factorial(max : int) : int =
+fun factorial(max : int) : int
   let prod = 1 in
   let i = max in
   do
@@ -8,9 +8,9 @@ fun factorial(max : int) : int =
   end
 end
 
-fun factorial_rec(acc : int, max : int) : int =
+fun factorial_rec(acc : int, max : int) : int
   if( max = 0 ) then 1*acc
   else factorial_rec(max*acc,max-1)
 end
 
-print factorial_rec(1,10)
+print factorial(10)

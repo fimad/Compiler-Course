@@ -24,6 +24,12 @@ struct
     method
   end
 
+  (* options for tuning the translator *)
+  val config_unroll = ref NONE
+  fun setUnrollAmount amt = (config_unroll := amt)
+  val config_vectorize = ref false
+  fun setVectorize v = (config_vectorize := v)
+
   fun getProgram () = !methods
 
   exception TranslationError of string;
@@ -545,7 +551,6 @@ struct
     end
   | translate (Ast.For (init_exp,cond_exp,step_exp,doexp)) scope fscope = let
       val cnd_label = makenextlabel ()
-      val loop_start_label = makenextlabel ()
       val loop_end_label = makenextlabel ()
       val (init_code,init_res,_) = evalArg scope fscope init_exp
       val (cond_code,cond_res,cond_ty) = evalArg scope fscope cond_exp
@@ -553,14 +558,33 @@ struct
       val _ = ensureType LLVM.i1 [cond_ty]
       val (do_code,do_res,_) = evalArg scope fscope doexp
       val res = makenextvar()
+
+
+      fun containsALoop (Ast.For _) = true
+        | containsALoop (Ast.Let (_,e1,e2)) = containsALoop e1 orelse containsALoop e2
+        | containsALoop _ = false
+
+      (*unrolls a loop i times*)
+      fun doUnrollLoop 0 = []
+        | doUnrollLoop i = let
+            val loop_next_label = makenextlabel ()
+          in
+            cond_code@[
+              LLVM.CndBr(cond_res,LLVM.Label(loop_next_label),LLVM.Label(loop_end_label))
+            , LLVM.DefnLabel(loop_next_label)
+            ]@do_code@step_code@(doUnrollLoop (i-1))
+          end
+
+      val unrolledLoopCode = case (containsALoop doexp,!config_unroll) of
+          (true,_) => doUnrollLoop 1 (*only unroll inner loops*)
+        | (_,NONE) => doUnrollLoop 1
+        | (_,SOME unroll) => if unroll <= 0 then doUnrollLoop 1 else doUnrollLoop unroll
+
     in
       (res, LLVM.i32, init_code@[
           LLVM.Br (LLVM.Label cnd_label)
         , LLVM.DefnLabel cnd_label
-        ]@cond_code@[
-          LLVM.CndBr(cond_res,LLVM.Label(loop_start_label),LLVM.Label(loop_end_label))
-        , LLVM.DefnLabel(loop_start_label)
-        ]@do_code@step_code@[
+        ]@unrolledLoopCode@[
           LLVM.Br(LLVM.Label(cnd_label))
         , LLVM.DefnLabel(loop_end_label)
         ]@[

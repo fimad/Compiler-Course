@@ -1,6 +1,5 @@
 =For Friday
-  -arrays as vectors
-  -matrix mult
+  -vectorize the unrolling
   -graphs
     -vector optimizations with loop unrolling
 

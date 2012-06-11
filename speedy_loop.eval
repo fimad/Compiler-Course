@@ -1,0 +1,9 @@
+let i = 0 in
+let j = 0 in
+let sum = 0 in
+do
+  for(i:=0; i<50000; i:=i+1)
+    for(j:=i; j>0; j:=j-1)
+      sum := sum + i
+  print sum
+end

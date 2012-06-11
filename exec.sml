@@ -33,15 +33,25 @@ val (result,lexer) = invoke lexer
 
 (*for parsing arguments *)
 fun shouldArg arg = List.foldr (fn (x,b) => (x = arg) orelse b) false (CommandLine.arguments ())
+(*parses an argument and returns a maybe numeric argument*)
+fun shouldArgNum arg = List.foldr (fn (x,b) => 
+    let
+      val x_list = explode x
+      val num_str = implode (List.drop (x_list,length (explode arg)))
+      val num = Int.fromString num_str
+    in
+      if (not (isSome b) andalso String.isPrefix arg x) then num else b
+    end
+    ) NONE (CommandLine.arguments ())
 
 (*should we do optimizations?*)
-val shouldO1 = shouldArg "-O1"
-val shouldO2 = shouldArg "-O2"
-(*how much optimization?*)
-val optimizeLevel =
-  if shouldArg "-O2" then 2 else
-  if shouldArg "-O1" then 1 else
-  0;
+val optimizeLevel = case shouldArgNum "-O" of (SOME i) => i | _ => 0
+
+(*should we do loop unrolling?*)
+val loopUnroll = shouldArgNum "-LU"
+val _ = LLVM_Translate.setUnrollAmount loopUnroll
+(*should we also try to vectorize loops*)
+val _ = LLVM_Translate.setVectorize (shouldArg "-V")
 
 (*should we echo dot output?*)
 val shouldDot = shouldArg "-dot"
