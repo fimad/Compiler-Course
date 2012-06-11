@@ -318,6 +318,7 @@ struct
       , "declare i32 @printf(i8*, ...)\n"
       , "declare noalias i8* @malloc(i32) nounwind\n"
       , "declare void @free(i8*) nounwind\n"
+      , "declare i32 @rand() nounwind\n"
     ]
 
   fun insertAfterLabel code new_code = (case code of
