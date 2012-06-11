@@ -1,3 +1,8 @@
+fun mod(a:int,b:int) : int
+  let div = a / b in
+  a - (b*div)
+end
+
 fun mat_mult(a:[[int]], b:[[int]]) : [[int]]
   let c = [[int]]#128 in
   let x = 0 in
@@ -24,7 +29,7 @@ fun gen_rand_mat() : [[int]]
     for(x:=0; x<dim(a); x:=x+1) do
       a[x] := [int]#128
       for(y:=0; y<dim(a[x]); y:=y+1)
-        a[x][y] := rand()
+        a[x][y] := mod(rand(),100)
     end
     a
   end
