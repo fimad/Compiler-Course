@@ -545,7 +545,7 @@ struct
     in
       (var_result,highest_type,code)
     end
-  | translate (Ast.For (init_exp,cond_exp,step_exp,doexp)) scope fscope = let
+  | translate (for_exp as (Ast.For (init_exp,cond_exp,step_exp,doexp))) scope fscope = let
       val cnd_label = makenextlabel ()
       val loop_end_label = makenextlabel ()
       val (init_code,init_res,_) = evalArg scope fscope init_exp
@@ -561,15 +561,52 @@ struct
         | containsALoop (Ast.Case (_,es,e3)) = containsALoop e3 orelse containsALoop (Ast.Block (map #3 es))
         | containsALoop _ = false
 
+      (* find the highest unroll factor less than unroll that goes into max evenly *)
+      fun findUnroll unroll max = if max < unroll then max else if max mod unroll = 0 then unroll else findUnroll (unroll-1) max
+
+      (*This is a very narrow definition of a constant loop
+        returns the loop variable, and the max
+       *)
+      fun isConstLoop unroll (Ast.For
+            ( Ast.Assign (var_init,Ast.Int 0)
+            , Ast.Less (Ast.Var var_cond,Ast.Int max)
+            , Ast.Assign (var_step,Ast.Plus (Ast.Var var_plus,Ast.Int 1))
+            , _))
+                        = if var_init = var_cond andalso var_cond = var_step andalso var_step = var_plus 
+                            then SOME (var_init,max,findUnroll unroll max)
+                            else NONE
+        | isConstLoop _ _ = NONE
+
+      fun constUnrollLoop unroll loop_var max = let
+            val (cond_code,cond_res,cond_ty) = evalArg scope fscope cond_exp
+            val _ = ensureType LLVM.i1 [cond_ty]
+
+            val (step_code,step_res,_) = evalArg scope fscope step_exp
+            val (do_code,do_res,_) = evalArg scope fscope doexp
+
+            val loop_start_label = makenextlabel ()
+
+            fun repeat 0 _ = []
+              | repeat i x = x::(repeat (i-1) x)
+        in
+            cond_code@[
+              LLVM.CndBr(cond_res,LLVM.Label(loop_start_label),LLVM.Label(loop_end_label))
+            , LLVM.DefnLabel(loop_start_label)
+            ] @ ((List.concat o repeat unroll) (do_code@step_code))
+        end
+
       (*unrolls a loop i times
-        not super fast because it has to perform a check every step
+        includes a check at each step
+        not as fast, but can be applied to more types of loops
        *)
       fun naiveUnrollLoop 0 = []
         | naiveUnrollLoop i = let
             val (cond_code,cond_res,cond_ty) = evalArg scope fscope cond_exp
-            val (step_code,step_res,_) = evalArg scope fscope step_exp
             val _ = ensureType LLVM.i1 [cond_ty]
+
+            val (step_code,step_res,_) = evalArg scope fscope step_exp
             val (do_code,do_res,_) = evalArg scope fscope doexp
+
             val loop_next_label = makenextlabel ()
           in
             cond_code@[
@@ -581,8 +618,13 @@ struct
       val unrolledLoopCode = case (containsALoop doexp,!config_unroll) of
           (true,_) => naiveUnrollLoop 1 (*only unroll inner loops*)
         | (_,NONE) => naiveUnrollLoop 1
-        | (_,SOME unroll) => if unroll <= 0 then naiveUnrollLoop 1 else naiveUnrollLoop unroll
-
+        | (_,SOME unroll) =>
+            if unroll <= 0
+              then naiveUnrollLoop 1
+              else case isConstLoop unroll for_exp of
+                    NONE => naiveUnrollLoop unroll
+                  | SOME (loop_var,max,1) => naiveUnrollLoop unroll (* if we can't do a nice even unroll, go back to naive *)
+                  | SOME (loop_var,max,unroll) => constUnrollLoop unroll loop_var max
     in
       (res, LLVM.i32, init_code@[
           LLVM.Br (LLVM.Label cnd_label)
