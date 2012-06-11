@@ -16,7 +16,7 @@ struct
 
   val bb_compare = (fn ((xl,_),(yl,_)) => Int.compare( label2int xl, label2int yl))
 
-  structure BBSet = BinarySetFn (struct
+  structure BBSet = SplaySetFn (struct
       type ord_key = BasicBlock
       val compare = bb_compare
     end)

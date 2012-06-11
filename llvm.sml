@@ -10,6 +10,7 @@ struct
     | i32
     | float
     | array of Type
+    | vector of int*Type
     | ptr of Type
     | usertype_form of string*string (*used in intermediate operations when dealing with forms*)
     | usertype_parent
@@ -122,6 +123,7 @@ struct
     | printType usertype_parent = "%T"
     | printType (ptr ty) = concat [printType ty,"*"]
     | printType (array ty) = "%A*"
+    | printType (vector (d,ty)) = concat ["<",Int.toString d," x ",printType ty,">"]
     (*| printType (array (size,ty)) = concat ["[",(Int.toString size)," x ",(printType ty),"]"]*)
     | printType (usertype _) = printType (ptr i8)
     | printType (usertype_form (name,form)) = concat ["%T.",name,".",form]

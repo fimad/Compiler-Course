@@ -12,7 +12,7 @@ sig
     | Int of int
     | Float of real
     | Bool of int
-    | EmptyArray of (LLVM.Type*int)
+    | EmptyArray of (LLVM.Type*ast)
     | Array of ast list
     | ArrayIndex of ast*ast
     (*digit arith*)
@@ -75,7 +75,7 @@ struct
     | Dim of ast (*statically gets the int level dimension of an array*) (*0 for non arrays*)
     | Block of ast list
     | Print of ast
-    | EmptyArray of LLVM.Type*int
+    | EmptyArray of LLVM.Type*ast
     | Array of ast list
     | ArrayIndex of ast*ast
     | Plus of ast*ast

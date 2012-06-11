@@ -118,17 +118,6 @@ struct
   and getTypeForVar [] var = raise (TranslationError (concat ["Unbound variable '",var,"'"]))
     | getTypeForVar ((x,t)::scope) var = if x = var then t else getTypeForVar scope var
 
-    (*
-  and getLLVMTypeForVar scope var = let
-      fun type2llvm Int =  LLVM.i32
-        | type2llvm (Array []) = LLVM.i32
-        | type2llvm (Array (d::dims)) = LLVM.array (d,(type2llvm (Array dims)))
-    in type2llvm (getTypeForVar scope var) end
-    *)
-
-  and llvmTypeForDim ty [] = ty
-    | llvmTypeForDim ty (d::im) = LLVM.array (llvmTypeForDim ty im)
-
   and arrayBaseType (LLVM.array (sub)) = arrayBaseType sub
     | arrayBaseType ty = ty
 
@@ -145,11 +134,10 @@ struct
       (var_elem_ptr,LLVM.ptr ty_base,code)
     end
 
-  and arrayDimFromExps exps scope fscope = let
-      val first = length exps
-    in
-        first
-    end
+  and isConstantExpr (Ast.Int _) = true
+    | isConstantExpr (Ast.Float _) = true
+    | isConstantExpr (Ast.Bool _) = true
+    | isConstantExpr _ = false
 
   (*Hack to set variables correctly*)
   and setVariable result exp scope fscope = 
@@ -215,7 +203,7 @@ struct
       val ((_,e_ty)::types) = map (fn e => let val (r,t,_) = translate e scope fscope in (r,t) end) exps
       val high_type = highestType e_ty types
 
-      val (res,res_ty,create_code) = translate (Ast.EmptyArray (high_type,length exps)) scope fscope
+      val (res,res_ty,create_code) = translate (Ast.EmptyArray (high_type,Ast.Int (length exps))) scope fscope
 
       val (_,update_code) = foldl (fn (e,(i,prev_code)) => let
               val (ptr,ty,ptr_code) = calculateElemPtr res res_ty (LLVM.Int i)
@@ -233,13 +221,21 @@ struct
       val var_malloc = makenextvar ()
       val var_array = makenextvar ()
       val var_size_ptr = makenextvar ()
+      val var_mul = makenextvar ()
+      val var_add = makenextvar ()
       val var_res = makenextvar ()
       val ty = LLVM.array pty
-      val code = [
-          LLVM.Call (var_malloc,LLVM.ptr LLVM.i8,"malloc",[(LLVM.Int (8+(LLVM.sizeOfType ty)*dim),LLVM.i32)]) (*the extra 4 is for size info*)
+
+      val (dim_code,dim_res,dim_ty) = evalArg scope fscope dim
+      val _ = ensureType LLVM.i32 [dim_ty]
+
+      val code = dim_code@[
+          LLVM.Mul (var_mul,LLVM.i32,dim_res,(LLVM.Int (LLVM.sizeOfType pty)))
+        , LLVM.Add (var_add,LLVM.i32,LLVM.Variable var_mul,(LLVM.Int 8))
+        , LLVM.Call (var_malloc,LLVM.ptr LLVM.i8,"malloc",[(LLVM.Variable var_add,LLVM.i32)]) (*the extra 4 is for size info*)
         , LLVM.Bitcast (var_array,LLVM.ptr LLVM.i8,LLVM.Variable var_malloc,ty)
         , LLVM.GetElementPtr (var_size_ptr, ty, LLVM.Variable var_array, [LLVM.Int 0, LLVM.Int 0])
-        , LLVM.Store (LLVM.i32, LLVM.Int dim, LLVM.Variable var_size_ptr)
+        , LLVM.Store (LLVM.i32, dim_res, LLVM.Variable var_size_ptr)
         , LLVM.Alias (LLVM.Variable var_res,LLVM.Variable var_array)
       ]
     in
@@ -553,32 +549,39 @@ struct
       val cnd_label = makenextlabel ()
       val loop_end_label = makenextlabel ()
       val (init_code,init_res,_) = evalArg scope fscope init_exp
-      val (cond_code,cond_res,cond_ty) = evalArg scope fscope cond_exp
-      val (step_code,step_res,_) = evalArg scope fscope step_exp
-      val _ = ensureType LLVM.i1 [cond_ty]
-      val (do_code,do_res,_) = evalArg scope fscope doexp
       val res = makenextvar()
 
-
+      (* Does an ast contain a loop
+         We only want to unroll the most inner loop, otherwise, it gets crazy
+       *)
       fun containsALoop (Ast.For _) = true
         | containsALoop (Ast.Let (_,e1,e2)) = containsALoop e1 orelse containsALoop e2
+        | containsALoop (Ast.Block es) = foldr (fn (e,b) => b orelse containsALoop e) false es
+        | containsALoop (Ast.If (e1,e2,e3)) = containsALoop e1 orelse containsALoop e2 orelse containsALoop e3
+        | containsALoop (Ast.Case (_,es,e3)) = containsALoop e3 orelse containsALoop (Ast.Block (map #3 es))
         | containsALoop _ = false
 
-      (*unrolls a loop i times*)
-      fun doUnrollLoop 0 = []
-        | doUnrollLoop i = let
+      (*unrolls a loop i times
+        not super fast because it has to perform a check every step
+       *)
+      fun naiveUnrollLoop 0 = []
+        | naiveUnrollLoop i = let
+            val (cond_code,cond_res,cond_ty) = evalArg scope fscope cond_exp
+            val (step_code,step_res,_) = evalArg scope fscope step_exp
+            val _ = ensureType LLVM.i1 [cond_ty]
+            val (do_code,do_res,_) = evalArg scope fscope doexp
             val loop_next_label = makenextlabel ()
           in
             cond_code@[
               LLVM.CndBr(cond_res,LLVM.Label(loop_next_label),LLVM.Label(loop_end_label))
             , LLVM.DefnLabel(loop_next_label)
-            ]@do_code@step_code@(doUnrollLoop (i-1))
+            ]@do_code@step_code@(naiveUnrollLoop (i-1))
           end
 
       val unrolledLoopCode = case (containsALoop doexp,!config_unroll) of
-          (true,_) => doUnrollLoop 1 (*only unroll inner loops*)
-        | (_,NONE) => doUnrollLoop 1
-        | (_,SOME unroll) => if unroll <= 0 then doUnrollLoop 1 else doUnrollLoop unroll
+          (true,_) => naiveUnrollLoop 1 (*only unroll inner loops*)
+        | (_,NONE) => naiveUnrollLoop 1
+        | (_,SOME unroll) => if unroll <= 0 then naiveUnrollLoop 1 else naiveUnrollLoop unroll
 
     in
       (res, LLVM.i32, init_code@[

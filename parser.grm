@@ -39,7 +39,7 @@ structure Ast = Ast
        | START of Ast.CompilerTarget
        | PARAMS of (string*LLVM.Type) list
        | EXPLIST of Ast.ast list
-       | ARRAY_DIM of int
+       | ARRAY_DIM of Ast.ast
        | ARRAY_INDEX of Ast.ast
        | TERM of Ast.ast
        | STATEMENT of Ast.ast
@@ -139,7 +139,7 @@ TERM : ID                         (Ast.Var(ID))
 
 ARRAY_INDEX : START_ARRAY EXP END_ARRAY (EXP)
 
-ARRAY_DIM : POUND INT             (INT)
+ARRAY_DIM : POUND EXP             (EXP)
 
 EXPLIST : EXP                     ([EXP])
         | EXP COMMA EXPLIST       (EXP::EXPLIST)
