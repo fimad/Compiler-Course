@@ -60,10 +60,10 @@ structure Ast = Ast
 
 %%
 
-START : TYPES FUNC_LIST STATEMENT EOF       ((TYPES,FUNC_LIST,STATEMENT))
-      | FUNC_LIST STATEMENT EOF             (([],FUNC_LIST,STATEMENT))
-      | TYPES STATEMENT EOF                 ((TYPES,[],STATEMENT))
-      | STATEMENT EOF                       (([],[],STATEMENT))
+START : TYPES FUNC_LIST STATEMENT EOF       (Ast.CompilerTarget (TYPES,FUNC_LIST,STATEMENT))
+      | FUNC_LIST STATEMENT EOF             (Ast.CompilerTarget ([],FUNC_LIST,STATEMENT))
+      | TYPES STATEMENT EOF                 (Ast.CompilerTarget (TYPES,[],STATEMENT))
+      | STATEMENT EOF                       (Ast.CompilerTarget ([],[],STATEMENT))
 
 TYPES : TYPE_DEF                  ([TYPE_DEF])
       | TYPE_DEF TYPES            (TYPE_DEF::TYPES)

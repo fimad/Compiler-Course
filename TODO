@@ -6,9 +6,6 @@
     -vector optimizations with loop unrolling
 
 =For FUN
-  -function section
-    -functions have end keyword instead of in
-    -must appear after types before main segment
   -type parameters
   -implement lists!!!
   -change let in to let in end

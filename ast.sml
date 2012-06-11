@@ -39,7 +39,7 @@ sig
     | Let of string*ast*ast
 
   type Function = string*((string*LLVM.Type) list)*LLVM.Type*ast
-  type CompilerTarget = (LLVM.UserType list)*(Function list)*ast
+  datatype CompilerTarget = CompilerTarget of (LLVM.UserType list)*(Function list)*ast
 
   (*
    * enval is a datatype that covers the possible values that can be stored in the
@@ -100,7 +100,7 @@ struct
     | Let of string*ast*ast
 
   type Function = string*((string*LLVM.Type) list)*LLVM.Type*ast
-  type CompilerTarget = (LLVM.UserType list)*(Function list)*ast
+  datatype CompilerTarget = CompilerTarget of (LLVM.UserType list)*(Function list)*ast
 
   datatype enval
     = Val of int
