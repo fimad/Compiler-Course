@@ -429,7 +429,7 @@ struct
         val args = (map (fn (_,r,t) => (r,t)) argsAndCodes)
         (*change arrays so that they are passed as pointers*)
         val args = map (fn (x,ty) => case ty of
-            LLVM.array _ => (x,LLVM.ptr ty)
+            LLVM.array _ => (x,ty)
             | _ => (x,ty)) args
         val l = makenextvar ()
         val ty = typeForFunc v fscope
@@ -651,7 +651,7 @@ struct
       (* change xids so that it doesn't affect the scope*)
       (* arrays are weird, sometimes the look like pointers, sometimes not..*)
       val xids = map (fn (x,ty) => case ty of
-          LLVM.array _ => (x,LLVM.ptr ty)
+          LLVM.array _ => (x,ty)
           | _ => (x,ty)) xids
       val (alias_code,[var]) = ensureVars [farg]
       val (cast_code,ty) = resolveType' [] ty [(var,fty)]
@@ -675,7 +675,7 @@ struct
 
   fun compile (Ast.CompilerTarget (types,funs,ast)) = let
     val _ = map LLVM.addUserType types (*add the user types to the scope*)
-    val funScope = getFunScope funs
+    val funScope = ("rand",LLVM.i32)::(getFunScope funs)
 
     val _ = map (compileFun [] funScope) funs
     val (mainBody,vres,vty) = evalArg [] funScope ast

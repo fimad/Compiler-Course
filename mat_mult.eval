@@ -1,0 +1,43 @@
+fun mat_mult(a:[[int]], b:[[int]]) : [[int]]
+  let c = [[int]]#128 in
+  let x = 0 in
+  let y = 0 in
+  let i = 0 in
+  do
+    for(x:=0; x<dim(a); x:=x+1) do
+      c[x] := [int]#128
+      for(y:=0; y<dim(a[x]); y:=y+1) do
+        c[x][y] := 0
+        for(i:=0; i<dim(a[x]); i:=i+1)
+          c[x][y] := c[x][y] + a[x][i] + b[i][y]
+      end
+    end
+  c
+  end
+end
+
+fun gen_rand_mat() : [[int]]
+  let a = [[int]]#128 in
+  let x = 0 in
+  let y = 0 in
+  do
+    for(x:=0; x<dim(a); x:=x+1) do
+      a[x] := [int]#128
+      for(y:=0; y<dim(a[x]); y:=y+1)
+        a[x][y] := rand()
+    end
+    a
+  end
+end
+
+fun print_mat(a:[[int]]) : int
+  let x = 0 in
+  for(x:=0; x<dim(a); x:=x+1)
+    let y = 0 in
+    for(y:=0; y<dim(a[x]); y:=y+1)
+      print a[x][y]
+end
+
+let a = gen_rand_mat() in
+let b = gen_rand_mat() in
+print_mat( mat_mult(a,b) )
