@@ -13,69 +13,91 @@ struct
         for each n in N - {n0}:
                  Dom(n) = {n} union with intersection over all p in pred(n) of Dom(p)
 *)
-fun calcDom bbg = let
+(*
+structure BBSet = BinarySetFn (struct
+    type ord_key = BasicBlock
+    val compare = bb_compare
+  end)
+*)
+fun calcDom' bbg = let
     val dmap = ref BB.BBMap.empty
     val root = BB.root bbg
-    val all_but_root = BB.list_diff' BB.bb_eq (BB.to_list bbg) [root]
+    val root_set = BB.BBSet.singleton root
+    val all_but_root = BB.BBSet.difference (BB.to_set bbg, root_set)
     (*  Dom(n0) = {n0} *)
-    val _ = let in dmap := (BB.map_insert (!dmap) root [root]) end
+    val _ = let in dmap := (BB.map_insert (!dmap) root (root_set)) end
     (*
        for each n in N - {n0}
           Dom(n) = N;
     *)
-    val _ = let in dmap := (foldl (fn (bb,m)=>BB.map_insert m bb (BB.to_list bbg)) (!dmap) all_but_root) end
+    val _ = let in dmap := (BB.BBSet.foldl (fn (bb,m)=>BB.map_insert m bb (BB.to_set bbg)) (!dmap) all_but_root) end
     (*
        while changes in any Dom(n)
             for each n in N - {n0}:
                      Dom(n) = {n} union with intersection over all p in pred(n) of Dom(p)
     *)
     fun calcDom_help old_dmap = let
-        val _ = map (fn n => dmap := BB.map_insert (!dmap) n (n::(
+        val _ = map (fn n => dmap := BB.map_insert (!dmap) n (BB.BBSet.add
                (* Dom(n) = {n} union with intersection over all p in pred(n) of Dom(p) *)
-              foldl (fn (p,b) => BB.list_inter' BB.bb_eq  b (let val d = BB.map_lookup (!dmap) p in d end)) (BB.to_list bbg) (BB.pred bbg n)
-            ))) (BB.list_diff' BB.bb_eq (BB.to_list bbg) [root]) (* for each n in N-{n0} *)
+              ( BB.BBSet.foldl
+                (fn (p,b) => BB.BBSet.intersection (b, BB.map_lookup_set (!dmap) p))
+                (BB.to_set bbg)
+                (BB.BBSet.addList (BB.BBSet.empty,(BB.pred bbg n)))
+              , n)
+              )) (BB.BBSet.listItems (BB.BBSet.difference ((BB.to_set bbg),root_set))) (* for each n in N-{n0} *)
       in
         (* while changes in any Dom(n) *)
-        if BB.map_equal' BB.bb_eq old_dmap (!dmap) then (!dmap) else calcDom_help (!dmap)
+        if BB.map_equal' BB.BBSet.equal old_dmap (!dmap) then (!dmap) else calcDom_help (!dmap)
       end
   in
     calcDom_help (!dmap)
   end
+val calcDom = (BB.BBMap.map BB.BBSet.listItems) o calcDom'
 
 fun dominates dmap d n = let (* d dominates n *)
-    val doms = BB.map_lookup dmap n
-  in List.exists (fn x => BB.bb_equal d x) doms end
+    val doms = BB.map_lookup_set dmap n
+  in BB.BBSet.exists (fn x => BB.bb_equal d x) doms end
 
 fun idom2 domMap n = let
 (* It is said that a block M immediately dominates block N if M dominates N, and there is no intervening block P such that M dominates P and P dominates N. *)
-  val doms = BB.map_lookup domMap n
-  in case
-    List.filter (fn m => 
-        length (List.filter (fn p => dominates domMap m p) (BB.list_diff' BB.bb_eq doms [m,n])) = 0
-      ) (BB.list_diff' BB.bb_eq doms [n])
-  of
-    (x::_) => x
-    | _ => n
+  val doms = BB.map_lookup_set domMap n
+  val idoms = 
+    BB.BBSet.filter
+      (fn m => 
+        (*length (List.filter (fn p => dominates domMap m p) (BB.list_diff' BB.bb_eq doms [m,n])) = 0*)
+        BB.BBSet.isEmpty
+          (BB.BBSet.filter
+            (fn p => dominates domMap m p)
+            (BB.BBSet.difference
+              ( doms
+              , BB.BBSet.add (BB.BBSet.singleton m,n) )
+            )
+          )
+      )
+      (*(BB.list_diff' BB.bb_eq doms [n])*)
+      (BB.BBSet.difference (doms, (BB.BBSet.singleton n)))
+  in
+    if BB.BBSet.isEmpty idoms then n else (hd o BB.BBSet.listItems) idoms
   end
 
-fun idom bbg n = idom2 (calcDom bbg) n
+fun idom bbg n = idom2 (calcDom' bbg) n
 
-fun calcDF bbg = let
+fun calcDF' bbg = let
     (* calculate dominator tree ? *)
-    val dmap = calcDom bbg
+    val dmap = calcDom' bbg
     val dfmap = ref BB.BBMap.empty
     val dominates = dominates dmap
     val idom = idom2 dmap
     fun calcDF_help n = if not (BB.map_contains (!dfmap) n) then let (* only run this function if we haven't already been called on n *)
-        val _ = (dfmap := BB.map_insert (!dfmap) n [])
-        val s = ref (List.filter (fn y => not (BB.bb_equal (idom y) n)) (BB.succ bbg n)) (* compute DF_local_[n] *)
+        val _ = (dfmap := BB.map_insert (!dfmap) n BB.BBSet.empty)
+        val s = ref (BB.BBSet.filter (fn y => not (BB.bb_equal (idom y) n)) (BB.BBSet.addList (BB.BBSet.empty,BB.succ bbg n))) (* compute DF_local_[n] *)
         (* A dominator tree is a tree where each node's children are those nodes it immediately dominates. Because the immediate dominator is unique, it is a tree. The start node is the root of the tree. *)
-        val children = List.filter (fn c => BB.bb_equal (idom c) n) (BB.to_list bbg)
+        val children = BB.BBSet.filter (fn c => BB.bb_equal (idom c) n) (BB.to_set bbg)
         val _ = map (fn c => let
               val _ = calcDF_help c (* compute _calcDF for all the children *)
-              val wlist = BB.map_lookup (!dfmap) c
-              val _ = (s := BB.list_union' BB.bb_eq (!s) (List.filter (fn w => not (dominates n w) orelse BB.bb_equal n w) wlist))
-            in () end) children
+              val wlist = BB.map_lookup_set (!dfmap) c
+              val _ = (s := BB.BBSet.union (!s, (BB.BBSet.filter (fn w => not (dominates n w) orelse BB.bb_equal n w) wlist)))
+            in () end) (BB.BBSet.listItems children)
         val _ = (dfmap := BB.map_insert (!dfmap) n (!s))
       in
         ()
@@ -84,6 +106,7 @@ fun calcDF bbg = let
   in
     !dfmap
   end
+val calcDF = (BB.BBMap.map BB.BBSet.listItems) o calcDF'
 
 structure VarMap = RedBlackMapFn (struct
     type ord_key = string
@@ -99,24 +122,24 @@ structure PhiMap = RedBlackMapFn (struct
       end)
   end)
 fun resolvePhi bbg = let
-    val dfmap = calcDF bbg
+    val dfmap = calcDF' bbg
     val vars = BB.variables bbg
     val new_bbg = ref bbg
     fun def bb = map #1 (BB.def bb)
 
     fun var_lookup m x = (case VarMap.find (m,x) of
-                SOME lst => lst
-                | NONE => [])
+                  SOME set => set
+                | NONE => BB.BBSet.empty)
 
     (*maps from variables to the nodes that 'def them*)
     val defsites = ref VarMap.empty
     (* fill up defsites yo *)
     val _ = map (fn n => map (fn v =>
             let
-              val lst = var_lookup (!defsites) v
-              val _ = (defsites := VarMap.insert (!defsites,v,(n::lst)))
+              val set = var_lookup (!defsites) v
+              val _ = (defsites := VarMap.insert (!defsites,v, BB.BBSet.add (set,n) ))
             in
-              lst
+              set
             end
           ) (def n)) (BB.to_list bbg)
     
@@ -139,7 +162,7 @@ fun resolvePhi bbg = let
 
     (*place phi functions in new_bbg for variable x*)
     fun variable_phi x = let
-        val inserted = ref []
+        val inserted = ref BB.BBSet.empty
         val added = ref (var_lookup (!defsites) x)
         val worklist = ref (!added)
         (*
@@ -147,18 +170,22 @@ fun resolvePhi bbg = let
         val _ = print (concat (map (fn b => concat ["\t",(Int.toString o BB.bb2id) b,"\n"]) (!added)))
         val _ = print (concat ["Done!\n"])
         *)
-        fun step () = (case (!worklist) of
-            [] => ()
-          | (b::bs) => let
+        fun step () =
+          if BB.BBSet.isEmpty (!worklist)
+            then ()
+            else let
+              val b = valOf (BB.BBSet.find (fn _ => true) (!worklist))
+              val bs = BB.BBSet.delete ((!worklist),b)
               val _ = (worklist := bs) (*remove b from worklist*)
-              val _ = map (*for each d in the df of b*)
-                (fn d => if (not (BB.list_has' BB.bb_eq (!inserted) d) andalso b_needs_phi_for_x d x) then let
+              val _ = BB.BBSet.map (*for each d in the df of b*)
+                (*(fn d => if (not (BB.list_has' BB.bb_eq (!inserted) d) andalso b_needs_phi_for_x d x) then let*)
+                (fn d => if (not (BB.BBSet.member (!inserted,d)) andalso b_needs_phi_for_x d x) then let
                     (*mark that we've inserted a phi function here*)
-                    val _ = (inserted := d::(!inserted))
+                    val _ = (inserted := BB.BBSet.add (!inserted,d))
                     (*add d to the added and work list if we haven't seen it before*)
-                    val _ = if not (BB.list_has' BB.bb_eq (!added) d) then let
-                      val _ = (added := d::(!added)) 
-                      val _ = (worklist := d::(!worklist))
+                    val _ = if not (BB.BBSet.member (!added,d)) then let
+                      val _ = (added := BB.BBSet.add (!added,d)) 
+                      val _ = (worklist := BB.BBSet.add (!worklist,d))
                       in () end else ()
                     (*actually insert a phi function*)
                     fun var v = concat ["%",v]
@@ -174,15 +201,14 @@ fun resolvePhi bbg = let
                     (*val _ = (new_bbg := BB.replace (!new_bbg) (BB.set_code d ((LLVM.Phi (x,[]))::(BB.code d)))) *)
                     val _ = (new_bbg := BB.replace (!new_bbg) (BB.set_code d (LLVM.insertAfterLabel (BB.code d) [phi])))
                   in
-                    ()
+                    d (*return value is meaningless *)
                   end
-                 else ()
+                 else d (*return value is meaningless *)
                 )
-                (BB.map_lookup dfmap b) (*each node in the df of b*)
+                (BB.map_lookup_set dfmap b) (*each node in the df of b*)
             in
               step ()
             end
-        )
       in
         step ()
       end
@@ -194,8 +220,8 @@ fun resolvePhi bbg = let
 
 fun renameVariables bbg = let
     (* calculate dominator tree ? *)
-    val dmap = calcDom bbg
-    val dfmap = calcDF bbg
+    val dmap = calcDom' bbg
+    val dfmap = calcDF' bbg
     val vars = BB.variables bbg
     val new_bbg = ref bbg
 

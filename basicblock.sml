@@ -8,18 +8,38 @@ struct
   datatype Annotation =
       Label of string*int
     | NoLabel of int
-  fun label2int (Label (_,i)) = i
-    | label2int (NoLabel i) = i
-(*Internal Basic blocks are lists of op codes *)
   type BasicBlock' = LLVM.OP list
   type BasicBlock = Annotation*BasicBlock'
-  type BasicBlockGraph = Graph.graph*(BasicBlock list)
+
+  fun label2int (Label (_,i)) = i
+    | label2int (NoLabel i) = i
+
+  val bb_compare = (fn ((xl,_),(yl,_)) => Int.compare( label2int xl, label2int yl))
+
+  structure BBSet = BinarySetFn (struct
+      type ord_key = BasicBlock
+      val compare = bb_compare
+    end)
+
+  structure BBMap = RedBlackMapFn (struct
+      type ord_key = BasicBlock
+      val compare = bb_compare
+    end)
+
+(*Internal Basic blocks are lists of op codes *)
+  type BasicBlockGraph = Graph.graph*(BBSet.set)
 
   
   (**********************************
    * LIST AND MAP UTILITY FUNCTIONS *
    **********************************)
 
+  (*These are horribly inefficent, and are phased out by actual sets*)
+
+  (*
+  *)
+
+  (*
   (* functions for treating lists like sets *)
   (* for each element in xs, filter the remaining list *)
   (* non order preserving *)
@@ -50,25 +70,30 @@ struct
       fun rm ls = List.filter (fn z => not (e (z,x))) ls
       in list_equal' e (rm xs) (rm ys) end
   fun list_equal a b = list_equal' (op =) a b
+  *)
 
   (*functions for dealing with maps of basic blocks to lists*)
-  val bb_compare = (fn ((xl,_),(yl,_)) => Int.compare( label2int xl, label2int yl))
-  structure BBMap = RedBlackMapFn (struct
-      type ord_key = BasicBlock
-      val compare = bb_compare
-    end)
   fun map_lookup m key = (case BBMap.find (m,key) of
         NONE => []
       | SOME v => v)
+  fun map_lookup_set m key = (case BBMap.find (m,key) of
+        NONE => BBSet.empty
+      | SOME v => v)
+  (* e is the function used to compare the elements of the maps *)
   fun map_equal' e m1 m2 = let
-    fun oneway e m1 m2 = BBMap.foldli (fn (k,v,b) => if list_equal' e (map_lookup m2 k) v then b else false) true m1
+    fun oneway e m1 m2 = BBMap.foldli (fn (k,v,b) => 
+          case BBMap.find (m2,k) of
+              NONE => false
+            | SOME v' => b andalso e (v,v')
+        ) true m1
     in oneway e m1 m2 andalso oneway e m2 m1 end
   fun map_equal a b = map_equal' (op =) a b
+
   fun map_contains m bb = if not (Option.isSome (BBMap.find (m,bb))) then false else true
   fun map_insert m bb v = BBMap.insert (m,bb,v)
   fun map_find m key = BBMap.find (m,key)
 
-  fun graph_equal (_,bbs_1) (_,bbs_2) = list_equal' (fn (a,b) => bb_compare (a,b) = EQUAL) bbs_1 bbs_2
+  fun graph_equal (_,bbs_1) (_,bbs_2) = BBSet.equal (bbs_1,bbs_2)
 
   
   (**********************************
@@ -77,8 +102,7 @@ struct
 
 (* functions for getting relevant info out of a basic block *)
   exception NoSuchBlock
-  fun id2bb (graph,[]) id = raise NoSuchBlock
-    | id2bb (graph,((label,bb)::bs)) id = if label2int label = id then (label,bb) else id2bb (graph,bs) id
+  fun id2bb (graph,bbs) id = case BBSet.find (fn (l,bb) => label2int l = id) bbs of NONE => raise NoSuchBlock | SOME r => r
   fun bb2id (label,code) = label2int label
 
   (*grabs a fresh copy of the bb from the graph*)
@@ -93,23 +117,24 @@ struct
   fun bb_equal (l1,_) (l2,_) = label2int l1 = label2int l2
   fun bb_eq ((l1,_),(l2,_)) = label2int l1 = label2int l2
 
-  fun to_list (graph,bbs) = bbs
+  fun to_list (graph,bbs) = BBSet.listItems bbs
+  fun to_set (graph,bbs) = bbs
   fun to_graph (graph,bbs) = graph
 
   fun replace (graph,bbs) bbnew = let
       fun equals (a,_) (b,_) = a = b
     (* in (graph,bbnew::(list_diff' equals bbs [bbnew])) end *)
-    in (graph,bbnew::(List.filter (not o (equals bbnew)) bbs)) end
+    in (graph,BBSet.add ((BBSet.filter (not o (equals bbnew)) bbs),bbnew)) end
 
-  fun block_map (graph,bbs) f = (graph,(map f bbs))
+  fun block_map (graph,bbs) f = (graph,(BBSet.map f bbs))
 
-  fun code_map (graph,bbs) f = (graph,(map (fn (label,code) => (label,map f code)) bbs))
+  fun code_map (graph,bbs) f = (graph,(BBSet.map (fn (label,code) => (label,map f code)) bbs))
 
   fun root graph = id2bb graph 0
 
   fun dummy_bb code = (NoLabel ~1,code)
 
-  fun num_blocks (graph,bbs) = length bbs
+  fun num_blocks (graph,bbs) = BBSet.numItems bbs
   
   fun graph2code graph = let
       fun helper id = if id < (num_blocks graph) then (code (id2bb graph id))@(helper (id+1)) else []
@@ -119,134 +144,152 @@ struct
       val bb = refresh bbg bb
     in
       case (code bb) of
-        ((LLVM.DefnLabel l)::rest) => (bbg, l)
-      | code => let
-          val label_string = LLVM_Translate.makenextlabel ()
-          val label_code = LLVM.DefnLabel label_string
-          val new_code = label_code::code
-          val new_bbg = foldl (fn (p as (_,code),new_bbg)=>replace new_bbg (set_code p (code@[LLVM.Br (LLVM.Label label_string)]))) bbg (pred bbg bb)
-        in
-          (replace new_bbg (set_code bb new_code), label_string)
-        end
+          ((LLVM.DefnLabel l)::rest) => (bbg, l)
+        | code => let
+            val label_string = LLVM_Translate.makenextlabel ()
+            val label_code = LLVM.DefnLabel label_string
+            val new_code = label_code::code
+            val new_bbg = foldl (fn (p as (_,code),new_bbg)=>replace new_bbg (set_code p (code@[LLVM.Br (LLVM.Label label_string)]))) bbg (pred bbg bb)
+          in
+            (replace new_bbg (set_code bb new_code), label_string)
+          end
      end
 
-   fun replace_var bbg aliases = foldl (fn (bb,bbg) => replace bbg (set_code bb (((map (LLVM.replaceInOp aliases)) o code) bb))) bbg (to_list bbg)
+   fun replace_var (bbg as (_,bbs)) aliases = BBSet.foldl (fn (bb,bbg) => replace bbg (set_code bb (((map (LLVM.replaceInOp aliases)) o code) bb))) bbg bbs
   
   (**********************************
    *          DEF AND USE           *
    **********************************)
+
+  (*Sets used in use def calculations*)
+  fun use_def_compare ((a,_),(b,_)) = String.compare(a,b)
+  structure UseDefSet = BinarySetFn (struct
+      type ord_key = string*LLVM.OP
+      val compare = use_def_compare
+  end)
+  val useDefUnionFold = foldr UseDefSet.union UseDefSet.empty
   
-  fun def bb = let
-      fun op2def (code as (LLVM.Load (s,_,_))) = [(s,code)]
-        | op2def (code as (LLVM.GetElementPtr (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Add (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Sub (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Mul (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Div (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.CmpEq (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.CmpNe (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.CmpGt (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.CmpGe (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.CmpLt (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.CmpLe (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.And (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Or (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Alloca (s,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Ashr (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Xor (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Call (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.TailCall (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Phi (s,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Print (s,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.TailPrint (s,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Alias ((LLVM.Variable s),_))) =  [(s,code)]
-        | op2def (code as (LLVM.ZExt (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.SiToFp (s,_,_,_))) =  [(s,code)]
-        | op2def (code as (LLVM.Bitcast (s,_,_,_))) =  [(s,code)]
-        | op2def _ = []
+  (* now returns a set instead of a list *)
+  fun def' bb = let
+      fun op2def (code as (LLVM.Load (s,_,_))) = UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.GetElementPtr (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Add (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Sub (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Mul (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Div (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.CmpEq (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.CmpNe (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.CmpGt (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.CmpGe (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.CmpLt (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.CmpLe (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.And (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Or (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Alloca (s,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Ashr (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Xor (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Call (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.TailCall (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Phi (s,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Print (s,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.TailPrint (s,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Alias ((LLVM.Variable s),_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.ZExt (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.SiToFp (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.Bitcast (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def _ = UseDefSet.empty
     in
-      List.concat (map op2def (code bb))
+      useDefUnionFold (map op2def (code bb))
     end
+  val def = (UseDefSet.listItems o def')
 
-    (*
-  fun pred_def graph bb = let
-      fun pred_def' m [] = m
-        | pred_def' m bbs = foldl (fn (bb,m) => if BBMap.find (m,bb) = NONE then (pred_def' (BBMap.insert (m,bb,(def bb))) (pred graph bb)) else m) m bbs
-    in
-      List.concat (BBMap.listItems (pred_def' (map_insert BBMap.empty bb []) (pred graph bb)))
-    end
-    *)
-
-  fun use bb = let
-      fun arg2use code (LLVM.Variable s) = [(s,code)]
-        | arg2use _ _ = []
+  (* now returns a set instead of a list *)
+  fun use' bb = let
+      fun arg2use code (LLVM.Variable s) = UseDefSet.singleton (s,code)
+        | arg2use _ _ = UseDefSet.empty
       fun op2use (code as (LLVM.Load (_,_,a))) = arg2use code a
-        | op2use (code as (LLVM.GetElementPtr (_,_,a1,args))) = (arg2use code a1)@(List.concat (map (arg2use code) args))
-        | op2use (code as (LLVM.Store (_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.Add (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.Sub (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.Mul (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.Div (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.CmpEq (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.CmpNe (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.CmpGt (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.CmpGe (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.CmpLt (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.CmpLe (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.GetElementPtr (_,_,a1,args))) = UseDefSet.union ((arg2use code a1),(useDefUnionFold (map (arg2use code) args)))
+        | op2use (code as (LLVM.Store (_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.Add (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.Sub (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.Mul (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.Div (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.CmpEq (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.CmpNe (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.CmpGt (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.CmpGe (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.CmpLt (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.CmpLe (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
         | op2use (code as (LLVM.Br (a))) = arg2use code a
         | op2use (code as (LLVM.CndBr (a,_,_))) = arg2use code a
         | op2use (code as (LLVM.Ret (_,a))) = arg2use code a
         | op2use (code as (LLVM.Print (_,_,a))) = arg2use code a
         | op2use (code as (LLVM.TailPrint (_,_,a))) = arg2use code a
-        | op2use (code as (LLVM.And (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.Or (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.Ashr (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.Xor (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
-        | op2use (code as (LLVM.Call (_,_,_,args))) = List.concat (map (arg2use code o #1) args)
-        | op2use (code as (LLVM.TailCall (_,_,_,args))) = List.concat (map (arg2use code o #1) args)
+        | op2use (code as (LLVM.And (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.Or (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.Ashr (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.Xor (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.Call (_,_,_,args))) = useDefUnionFold (map (arg2use code o #1) args)
+        | op2use (code as (LLVM.TailCall (_,_,_,args))) = useDefUnionFold (map (arg2use code o #1) args)
         | op2use (code as (LLVM.Alias (_,a))) = arg2use code a
         | op2use (code as (LLVM.ZExt (_,_,a1,_))) = (arg2use code a1)
         | op2use (code as (LLVM.SiToFp (_,_,a1,_))) = (arg2use code a1)
         | op2use (code as (LLVM.Bitcast (_,_,a1,_))) = (arg2use code a1)
-        | op2use _ = []
-      fun equals ((a,_),(b,_)) = a = b
+        | op2use _ = UseDefSet.empty
+
+        val defSet = UseDefSet.addList (UseDefSet.empty,def bb)
+        val useSet' = (useDefUnionFold (map op2use (code bb)))
     in
-      list_diff' equals (List.concat (map op2use (code bb))) (def bb)
+      (UseDefSet.difference) (useSet',defSet)
     end
+  val use = (UseDefSet.listItems o use')
 
   fun isRealVariable v = (case (explode v) of
       ((#"_")::(#"_")::_) => true
     | _ => false)
   (* find only the use and def that contain __ as the leading characters *)
-  fun variables (graph,bbs) = (list_uniqify o (map #1) o List.concat) (map (fn b => (use b)@(def b)) bbs)
+  (*fun variables (graph,bbs) = (list_uniqify o (map #1) o List.concat) (map (fn b => (use b)@(def b)) bbs)*)
+  fun variables (graph,bbs) =
+        (map #1 o UseDefSet.listItems o useDefUnionFold)
+          (map (fn b => UseDefSet.union (use' b, def' b)) (BBSet.listItems bbs))
   
   (**********************************
    *           IN AND OUT           *
    **********************************)
 
-  fun in_out last_in last_out graph = let
+  fun in_out' last_in last_out graph = let
       val (bbgraph,bbs) = graph (*decompose graph*)
-      fun equals ((a,_),(b,_)) = a = b
-      val new_in = foldl (fn (bb,m) =>
+
+      fun map_lookup m v =(case BBMap.find (m,v) of
+          NONE => UseDefSet.empty
+        | SOME r => r)
+
+      val new_in = BBSet.foldl (fn (bb,m) =>
           BBMap.insert (
             m,
             bb,
-            (list_union' equals (use bb) (list_diff' equals (map_lookup last_out bb) (def bb)))
-            (*(list_diff' equals (list_union (use bb) (map_lookup last_out bb)) (def bb))*)
+            (*(list_union' equals (use bb) (list_diff' equals (map_lookup last_out bb) (def bb)))*)
+            UseDefSet.union ((use' bb), (UseDefSet.difference ((map_lookup last_out bb),(def' bb))))
           )
         ) BBMap.empty bbs
-      val new_out = foldl (fn (bb,m) =>
+      val new_out = BBSet.foldl (fn (bb,m) =>
           BBMap.insert (
             m,
             bb,
-            (foldl (fn (b,ls) => list_union' equals ls (map_lookup last_in b)) [] (succ graph bb))
+            (*(foldl (fn (b,ls) => list_union' equals ls (map_lookup last_in b)) [] (succ graph bb))*)
+            foldr (fn (b,set) => UseDefSet.union (set,map_lookup last_in b)) UseDefSet.empty (succ graph bb)
           )
         ) BBMap.empty bbs
     in
-      if (map_equal' equals last_in new_in) andalso (map_equal' equals last_out new_out) then (new_in,new_out)
-      else in_out new_in new_out graph
+      if (map_equal' UseDefSet.equal last_in new_in) andalso (map_equal' UseDefSet.equal last_out new_out) then (new_in,new_out)
+      else in_out' new_in new_out graph
     end
-  val in_out = in_out BBMap.empty BBMap.empty
+  val in_out' = in_out' BBMap.empty BBMap.empty
+  fun in_out bb = let
+      val (in_,out_) = in_out' bb
+    in
+      (BBMap.map UseDefSet.listItems in_, BBMap.map UseDefSet.listItems out_)
+    end
 
   
   (**********************************
@@ -296,12 +339,9 @@ struct
 
        val graph = Graph.newGraphOfSize (length bbs)
        val _ = makeEdges graph bbs
-    in (graph,bbs) end
+    in (graph,BBSet.addList (BBSet.empty,bbs)) end
 
   (*chains all the relevant stages together for convienence*)
   fun createBBGraph ops = annotatedBBLToGraph (annotateBBL (List.filter (fn l => length l > 0) (ops2bblist ops)))
-
-  fun createBBList (graph,[]) = []
-    | createBBList (graph,bb::bbs) = bb::(createBBList (graph,bbs))
   
 end

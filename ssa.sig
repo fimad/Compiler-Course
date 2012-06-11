@@ -3,7 +3,9 @@ sig
   (*.*)
 
   val idom : BB.BasicBlockGraph -> BB.BasicBlock -> BB.BasicBlock
+  val calcDom' : BB.BasicBlockGraph -> (BB.BBSet.set) BB.BBMap.map
   val calcDom : BB.BasicBlockGraph -> (BB.BasicBlock list) BB.BBMap.map
+  val calcDF' : BB.BasicBlockGraph -> (BB.BBSet.set) BB.BBMap.map
   val calcDF : BB.BasicBlockGraph -> (BB.BasicBlock list) BB.BBMap.map
   val resolvePhi : BB.BasicBlockGraph -> BB.BasicBlockGraph
   val renameVariables : BB.BasicBlockGraph -> BB.BasicBlockGraph
