@@ -9,7 +9,7 @@ struct
     | i8
     | i32
     | float
-    | array of int*Type
+    | array of Type
     | ptr of Type
     | usertype_form of string*string (*used in intermediate operations when dealing with forms*)
     | usertype_parent
@@ -29,7 +29,7 @@ struct
     | Alias of Arg*Arg (*Not an actual byte code, but is used in replacing variables with constant expressions*)
     | Load of Result*Type*Arg
     | Store of Type*Arg*Arg
-    | GetElementPtr of Result*Type*Arg*Arg
+    | GetElementPtr of Result*Type*Arg*(Arg list)
     | Add of Result*Type*Arg*Arg
     | Sub of Result*Type*Arg*Arg
     | Mul of Result*Type*Arg*Arg
@@ -104,9 +104,9 @@ struct
   fun sizeOfType i32 = 4
     | sizeOfType i8 = 1
     | sizeOfType i1 = 1
-    | sizeOfType (ptr _) = 4
+    | sizeOfType (ptr _) = 8
     | sizeOfType float = 8
-    | sizeOfType (array (size,ty)) = size*(sizeOfType ty)
+    | sizeOfType (array (ty)) = 8 (* arrays are just pointers yo! *)
     | sizeOfType (usertype name) = let
         val (ut,forms) = getUserType name
         val sizes = (map (fn (_,ts) => foldr (op +) 0 (map sizeOfType (map (fn t => if isPrimitive t then t else ptr t) ts))) forms)
@@ -121,8 +121,8 @@ struct
     | printType float = "double"
     | printType usertype_parent = "%T"
     | printType (ptr ty) = concat [printType ty,"*"]
-    (*| printType (array (size,ty)) = printType (ptr ty)*)
-    | printType (array (size,ty)) = concat ["[",(Int.toString size)," x ",(printType ty),"]"]
+    | printType (array ty) = "%A*"
+    (*| printType (array (size,ty)) = concat ["[",(Int.toString size)," x ",(printType ty),"]"]*)
     | printType (usertype _) = printType (ptr i8)
     | printType (usertype_form (name,form)) = concat ["%T.",name,".",form]
     | printType notype = ""
@@ -137,8 +137,8 @@ struct
       concat (map (printForm name) forms)
     end
 
-  fun arrayType (array (size,array sub)) = arrayType (array sub)
-    | arrayType (array (size,ty)) = SOME ty
+  fun arrayType (array (array sub)) = arrayType (array sub)
+    | arrayType (array (ty)) = SOME ty
     | arrayType _ = NONE
 
   fun printPosReal exp f =
@@ -226,7 +226,7 @@ struct
           | replOP (SiToFp (res,ty1,a1,ty2)) = SiToFp (res,ty1,(replArg a1),ty2)
           | replOP (Bitcast (res,ty1,a1,ty2)) = Bitcast (res,ty1,(replArg a1),ty2)
           | replOP (Store (ty,a1,a2)) = Store (ty,(replArg a1),(replArg a2))
-          | replOP (GetElementPtr (res,ty1,a1,a2)) = GetElementPtr (res,ty1,(replArg a1),(replArg a2))
+          | replOP (GetElementPtr (res,ty1,a1,args)) = GetElementPtr (res,ty1,(replArg a1),(map replArg args))
           | replOP (Add (res,ty,a1,a2)) = Add (res,ty,(replArg a1),(replArg a2))
           | replOP (Sub (res,ty,a1,a2)) = Sub (res,ty,(replArg a1),(replArg a2))
           | replOP (Mul (res,ty,a1,a2)) = Mul (res,ty,(replArg a1),(replArg a2))
@@ -258,7 +258,8 @@ struct
     | printOP (SiToFp (res,ty1,arg,ty2)) =  concat [h_printROP res "sitofp" ty1 [arg]," to ",printType ty2]
     | printOP (Bitcast (res,ty1,arg,ty2)) =  concat [h_printROP res "bitcast" ty1 [arg]," to ",printType ty2]
     | printOP (Load (res,ty,arg)) =  h_printROP res "load" ty [arg]
-    | printOP (GetElementPtr (res,ty1,a1,a2)) = concat ["%",res," = getelementptr inbounds ",(printType ty1)," ",(printArg a1),", i32 0",", i32 ",(printArg a2)]
+    (*| printOP (GetElementPtr (res,ty1,a1,a2)) = concat ["%",res," = getelementptr inbounds ",(printType ty1)," ",(printArg a1),", i32 0",", i32 ",(printArg a2)]*)
+    | printOP (GetElementPtr (res,ty1,a1,args)) = concat ["%",res," = getelementptr inbounds ",(printType ty1)," ",(printArg a1),concat (map (fn a=>concat[", i32 ",printArg a]) args)]
     | printOP (Store (ty,a1,a2)) =  concat [(h_printOP "store" ty [a1]),", ",(printType ty),"* ",(printArg a2)]
     | printOP (Add (res,float,a1,a2)) =  h_printROP res "fadd" float [a1, a2]
     | printOP (Add (res,ty,a1,a2)) =  h_printROP res "add" ty [a1, a2]
@@ -307,7 +308,8 @@ struct
     end
 
   fun printProgram program = concat [
-        "%T = type { i32, i8 }\n"
+        "%T = type { i32, i8 }\n" (* for user types *)
+      , "%A = type { i32, i8 }\n" (* for arrays *)
       , concat (map printUserType (!userTypeScope))
       , "\n"
       , "@.print_int_str = private constant [4 x i8] c\"%d\\0A\\00\", align 1\n"
@@ -323,12 +325,21 @@ struct
     | _ => new_code@code)
 
   
+(*this should also replace inside the alias list incase there are aliases of aliases*)
+fun replaceAlias (a,v) [] = []
+  | replaceAlias (a as (Variable a_str),v) ((a',v' as (Variable v'_str))::xs) = (if (v'_str=a_str) then (a',v) else (a',v'))::(replaceAlias (a,v) xs)
+  | replaceAlias (a,v) (x::xs) = x::(replaceAlias (a,v) xs)
+
 (* replaces a specific Arg if it is an alias with it's value *)
 fun replaceArg [] arg = arg
-  | replaceArg ((a,new_v)::xs) (arg as (Variable v)) = if v = a then new_v else replaceArg xs arg
-  | replaceArg ((a,(new_v as (Label new_v_str)))::xs) (arg as (Label v)) = if v = a then new_v else replaceArg xs arg
-  | replaceArg ((a,(new_v as (Variable new_v_str)))::xs) (arg as (Label v)) = if v = a then (Label new_v_str) else replaceArg xs arg
-  | replaceArg _ arg = arg
+  | replaceArg ((a as (Variable a_str),new_v)::xs) (arg as (Variable arg_str)) = if arg_str = a_str then new_v else replaceArg (replaceAlias (a,new_v) xs) arg
+  | replaceArg _ (arg) = arg
+  (*
+  | replaceArg ((a,new_v)::xs) (arg as (Variable v)) = if v = a then new_v else replaceArg (replaceAlias (a,new_v) xs) arg
+  | replaceArg ((a,(new_v as (Label new_v_str)))::xs) (arg as (Label v)) = if v = a then new_v else replaceArg (replaceAlias (a,new_v) xs) arg
+  | replaceArg ((a,(new_v as (Variable new_v_str)))::xs) (arg as (Label v)) = if v = a then (Label new_v_str) else replaceArg (replaceAlias (a,new_v) xs) arg
+  | replaceArg (_::xs) arg = replaceArg xs arg
+  *)
 
 (* replaces arguments in opcodes if they have been aliased *)
 fun replaceInOp aliases code =  let
@@ -338,7 +349,7 @@ fun replaceInOp aliases code =  let
       | replaceInOp' (ZExt (res,t1,a1,t2)) = ZExt (res,t1,(replaceArg a1),t2)
       | replaceInOp' (SiToFp (res,t1,a1,t2)) = SiToFp (res,t1,(replaceArg a1),t2)
       | replaceInOp' (Bitcast (res,t1,a1,t2)) = Bitcast (res,t1,(replaceArg a1),t2)
-      | replaceInOp' (GetElementPtr (r,t1,a1,a2)) = GetElementPtr (r,t1,(replaceArg a1),(replaceArg a2))
+      | replaceInOp' (GetElementPtr (r,t1,a1,args)) = GetElementPtr (r,t1,(replaceArg a1),(map replaceArg args))
       | replaceInOp' (Add (r,t,a1,a2)) = Add (r,t,(replaceArg a1),(replaceArg a2))
       | replaceInOp' (Sub (r,t,a1,a2)) = Sub (r,t,(replaceArg a1),(replaceArg a2))
       | replaceInOp' (Mul (r,t,a1,a2)) = Mul (r,t,(replaceArg a1),(replaceArg a2))

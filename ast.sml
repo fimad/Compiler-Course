@@ -7,15 +7,15 @@ sig
   datatype ast
     = Program of (LLVM.UserType list)*ast
     | Var of string
-    | Dim of int*string (*statically gets the int level dimension of an array*) (*0 for non arrays*)
+    | Dim of ast (*statically gets the int level dimension of an array*) (*0 for non arrays*)
     | Block of ast list
     | Print of ast
     | Int of int
     | Float of real
     | Bool of int
-    | EmptyArray of (LLVM.Type*(int list))
+    | EmptyArray of (LLVM.Type*int)
     | Array of ast list
-    | ArrayIndex of string*(ast list)
+    | ArrayIndex of ast*ast
     (*digit arith*)
     | Plus of ast*ast
     | Minus of ast*ast
@@ -36,7 +36,7 @@ sig
     | If of ast*ast*ast
     | For of ast*ast*ast*ast
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
-    | AssignArray of string*(ast list)*ast
+    | AssignArray of ast*ast*ast
     | Let of string*ast*ast
     | Fun of string*((string*LLVM.Type) list)*LLVM.Type*ast*ast
   (*
@@ -71,12 +71,12 @@ struct
     | Int of int
     | Float of real
     | Bool of int
-    | Dim of int*string (*statically gets the int level dimension of an array*) (*0 for non arrays*)
+    | Dim of ast (*statically gets the int level dimension of an array*) (*0 for non arrays*)
     | Block of ast list
     | Print of ast
-    | EmptyArray of LLVM.Type*(int list)
+    | EmptyArray of LLVM.Type*int
     | Array of ast list
-    | ArrayIndex of string*(ast list)
+    | ArrayIndex of ast*ast
     | Plus of ast*ast
     | Minus of ast*ast
     | Div of ast*ast
@@ -95,7 +95,7 @@ struct
     | If of ast*ast*ast
     | For of ast*ast*ast*ast
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
-    | AssignArray of string*(ast list)*ast
+    | AssignArray of ast*ast*ast
     | Let of string*ast*ast
     | Fun of string*((string*LLVM.Type) list)*LLVM.Type*ast*ast
 

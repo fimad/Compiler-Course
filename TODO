@@ -1,16 +1,18 @@
-=For Monday
-  -tail calls
-  -dynamic array sizes
+=For Friday
+  -expose rand
+  -arrays as vectors
+  -matrix mult
+  -graphs
+    -vector optimizations with loop unrolling
+
+=For FUN
   -function section
     -functions have end keyword instead of in
     -must appear after types before main segment
   -type parameters
   -implement lists!!!
   -change let in to let in end
-
-=For General Correctness
-  -available expression analysis does not work for programs with loops
-  -make syntax pretty
+  -merge basic blocks
 
 =For because it would be cool
   -nested functions

@@ -31,7 +31,7 @@ sig
   val bb_eq : (BasicBlock * BasicBlock) -> bool
   val bb_compare : (BasicBlock * BasicBlock) -> order
 
-  val replace_var : BasicBlockGraph -> (string*LLVM.Arg) list -> BasicBlockGraph
+  val replace_var : BasicBlockGraph -> (LLVM.Arg*LLVM.Arg) list -> BasicBlockGraph
 
   val variables : BasicBlockGraph -> string list
   val isRealVariable : string -> bool (* is it a proper variable or a temp? *)

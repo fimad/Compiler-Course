@@ -39,8 +39,8 @@ structure Ast = Ast
        | START of Ast.ast
        | PARAMS of (string*LLVM.Type) list
        | EXPLIST of Ast.ast list
-       | ARRAY_DIM of int list
-       | ARRAY_INDEX of Ast.ast list
+       | ARRAY_DIM of int
+       | ARRAY_INDEX of Ast.ast
        | TERM of Ast.ast
        | STATEMENT of Ast.ast
        | DO_BLOCK of Ast.ast
@@ -82,8 +82,9 @@ DO_BLOCK : DO EXPLIST END         (Ast.Block(EXPLIST))
 
 EXP : TERM                        (TERM)
     (*digit arith*)
+    | EXP ARRAY_INDEX             (Ast.ArrayIndex(EXP,ARRAY_INDEX))
     | PRINT EXP                   (Ast.Print(EXP))
-    | DIM LPAREN INT COMMA ID RPAREN                   (Ast.Dim(INT,ID))
+    | DIM LPAREN EXP RPAREN       (Ast.Dim(EXP))
     | EXP PLUS EXP                (Ast.Plus(EXP1,EXP2))
     | EXP MINUS EXP               (Ast.Minus(EXP1,EXP2))
     | EXP MULT EXP                (Ast.Mult(EXP1,EXP2))
@@ -99,7 +100,7 @@ EXP : TERM                        (TERM)
     | EXP MORE EXP                (Ast.More(EXP1,EXP2))
     | EXP MOREEQ EXP              (Ast.MoreEq(EXP1,EXP2))
     | ID ASSIGN EXP               (Ast.Assign(ID,EXP))
-    | ID ARRAY_INDEX ASSIGN EXP   (Ast.AssignArray(ID,ARRAY_INDEX,EXP))
+    | EXP ARRAY_INDEX ASSIGN EXP  (Ast.AssignArray(EXP1,ARRAY_INDEX,EXP2))
     | IF EXP THEN STATEMENT ELSE STATEMENT   (Ast.If(EXP,STATEMENT1,STATEMENT2))
     | FOR LPAREN EXP SEMICOLON EXP SEMICOLON EXP RPAREN STATEMENT   (Ast.For(EXP1,EXP2,EXP3,STATEMENT1))
     | CASE EXP OF CASE_THENS OTHERWISE_THEN      (Ast.Case(EXP,CASE_THENS,OTHERWISE_THEN))
@@ -112,22 +113,19 @@ CASE_THEN : ID LPAREN ID_LIST RPAREN THEN EXP  (ID,ID_LIST,EXP)
 OTHERWISE_THEN : OTHERWISE THEN EXP (EXP)
 
 TERM : ID                         (Ast.Var(ID))
-     | ID ARRAY_INDEX             (Ast.ArrayIndex(ID,ARRAY_INDEX))
      | NEG INT                    (Ast.Int(0-INT))
      | NEG FLOAT                  (Ast.Float(0.0-FLOAT))
      | INT                        (Ast.Int(INT))
      | FLOAT                      (Ast.Float(FLOAT))
      | BOOL                       (Ast.Bool(BOOL))
+     | START_ARRAY TYPE END_ARRAY ARRAY_DIM      (Ast.EmptyArray (TYPE,ARRAY_DIM))
      | START_ARRAY EXPLIST END_ARRAY  (Ast.Array (EXPLIST))
-     | START_ARRAY PRIMITIVE_TYPE END_ARRAY ARRAY_DIM      (Ast.EmptyArray (PRIMITIVE_TYPE,ARRAY_DIM))
      | LPAREN EXP RPAREN          (EXP)
      | ID LPAREN EXPLIST RPAREN   (Ast.Apply(Ast.Var(ID),EXPLIST))
 
-ARRAY_INDEX : START_ARRAY EXP END_ARRAY ([EXP])
-            | START_ARRAY EXP END_ARRAY ARRAY_INDEX (EXP::ARRAY_INDEX)
+ARRAY_INDEX : START_ARRAY EXP END_ARRAY (EXP)
 
-ARRAY_DIM : POUND INT             ([INT])
-          | POUND INT ARRAY_DIM   (INT::ARRAY_DIM)
+ARRAY_DIM : POUND INT             (INT)
 
 EXPLIST : EXP                     ([EXP])
         | EXP COMMA EXPLIST       (EXP::EXPLIST)
@@ -143,7 +141,7 @@ PARAMS : ID COLON TYPE                      ([(ID,TYPE)])
        | ID COLON TYPE COMMA PARAMS          ((ID,TYPE)::PARAMS)
 
 TYPE : PRIMITIVE_TYPE                                         (PRIMITIVE_TYPE)
-     | START_ARRAY PRIMITIVE_TYPE END_ARRAY ARRAY_DIM         (foldr (fn (d,t) => LLVM.array (d,t)) PRIMITIVE_TYPE ARRAY_DIM)
+     | START_ARRAY TYPE END_ARRAY                             (LLVM.array TYPE)
      | ID                                                     (LLVM.usertype ID)
 
 PRIMITIVE_TYPE : TYPE_INT                        (LLVM.i32)

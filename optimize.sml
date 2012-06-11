@@ -114,7 +114,7 @@ fun merge_bb bbg = let
               (case (p_code,s_code) of 
                 ([LLVM.DefnLabel p_label,LLVM.Br _], ((LLVM.DefnLabel s_label)::_)) => let
                     val _ = (new_bbg := BB.replace (BB.replace (!new_bbg) (BB.set_code bb s_code)) (BB.set_code s []))
-                    val _ = (new_bbg := BB.replace_var (!new_bbg) [(s_label,(LLVM.Variable p_label))])
+                    val _ = (new_bbg := BB.replace_var (!new_bbg) [(LLVM.Variable s_label,(LLVM.Variable p_label))])
                   in
                     ()
                   end
@@ -128,7 +128,7 @@ fun merge_bb bbg = let
                             | (p_code, ((LLVM.DefnLabel s_label)::_)) => let
                                 val _ = (new_bbg := BB.replace (BB.replace (!new_bbg) (BB.set_code p (((rev o tl o rev) p_code)@(tl s_code)))) (BB.set_code s []))
                                 val (bg,p_label) = BB.get_label (!new_bbg) p
-                                val _ = (new_bbg := BB.replace_var bg [(s_label,(LLVM.Variable p_label))])
+                                val _ = (new_bbg := BB.replace_var bg [(LLVM.Variable s_label,(LLVM.Variable p_label))])
                               in
                                 ()
                               end

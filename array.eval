@@ -1,10 +1,12 @@
-let a = [int]#5#10 in
+let a = [[int]]#10 in
 let x = 0 in
 do
-  for(x:=0; x<dim(0,a); x:=x+1)
-    let y = 0 in
-    for(y:=0; y<dim(1,a); y:=y+1)
+  for(x:=0; x<dim(a); x:=x+1)
+    let y = 0 in do
+    a[x] := [int]#10;
+    for(y:=0; y<dim(a[x]); y:=y+1)
       a[x][y] := x + y
+    end
   ;
-  print a[dim(0,a)-1][dim(1,a)-1]
+  print a[dim(a)-1][dim(a[0])-1]
 end

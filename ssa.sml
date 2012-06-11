@@ -231,7 +231,7 @@ fun renameVariables bbg = let
                     in
                       case line of
                           (LLVM.Load (r,t,a1)) => LLVM.Load ((change_result r),t,(change_arg a1))
-                        | (LLVM.GetElementPtr (r,t,a1,a2)) => LLVM.GetElementPtr ((change_result r),t,(change_arg a1),(change_arg a2))
+                        | (LLVM.GetElementPtr (r,t,a1,args)) => LLVM.GetElementPtr ((change_result r),t,(change_arg a1),(map change_arg args))
                         | (LLVM.Store (t,a1,a2)) => LLVM.Store (t,(change_arg a1),(change_arg a2))
                         | (LLVM.Add (r,t,a1,a2)) => LLVM.Add ((change_result r),t,(change_arg a1),(change_arg a2))
                         | (LLVM.Sub (r,t,a1,a2)) => LLVM.Sub ((change_result r),t,(change_arg a1),(change_arg a2))
@@ -297,9 +297,12 @@ fun renameVariables bbg = let
 
 fun removeAliases bbg = let
     fun find_aliases [] = []
-      | find_aliases ((LLVM.Alias ((LLVM.Variable a),value))::xs) = (a,value)::(find_aliases xs)
+      | find_aliases ((LLVM.Alias (a,value))::xs) = let
+          (*val _ = print (concat ["removing ",a,"\n"])*)
+        in (a,value)::(find_aliases xs) end
       | find_aliases (_::xs) = find_aliases xs
-    val aliases = List.concat (map (find_aliases o BB.code) (BB.to_list bbg))
+    val aliases = (rev o List.concat) (map (find_aliases o BB.code) (BB.to_list bbg))
+    val aliases = (find_aliases o BB.graph2code) bbg
 
     (* remove all alias op codes from a code list *)
     fun rmAliasOps [] = []

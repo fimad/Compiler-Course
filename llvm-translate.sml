@@ -60,6 +60,7 @@ struct
         | setResult_help (x::xs) = x::(setResult_help xs)
     in
       (newRes, setResult_help code)
+      (*(newRes,code@[LLVM.Alias(LLVM.Variable newRes,oldRes)])*)
     end
 
   fun evalArg scope _ (Ast.Int i) = ([],(LLVM.Int i),LLVM.i32)
@@ -120,49 +121,28 @@ struct
     *)
 
   and llvmTypeForDim ty [] = ty
-    | llvmTypeForDim ty (d::im) = LLVM.array (d,llvmTypeForDim ty im)
+    | llvmTypeForDim ty (d::im) = LLVM.array (llvmTypeForDim ty im)
 
-  and dimFromLLVMType (LLVM.array (i,sub)) = i::(dimFromLLVMType sub)
-    | dimFromLLVMType _ = []
-
-  and arrayBaseType (LLVM.array (i,sub)) = arrayBaseType sub
+  and arrayBaseType (LLVM.array (sub)) = arrayBaseType sub
     | arrayBaseType ty = ty
 
-  and calculateArrayIndex ptr ty [] [] _ _ = (ptr,[],ty)
-    | calculateArrayIndex ptr ty [] _ _ _ = (ptr,[],ty)
-    (*| calculateArrayIndex ptr ty [] _ _ _ = raise (TranslationError (concat ["not enuff indices... yo.. in '",ptr,"'"]))*)
-    | calculateArrayIndex ptr ty _ [] _ _ = raise (TranslationError (concat ["Indices into array '",ptr,"' have more dimensions than definition."]))
-    | calculateArrayIndex ptr ty (i::indices) (d::dims) scope fscope = let
-        val (i_code,i_res,i_ty) = evalArg scope fscope i 
-        val next_ptr = makenextvar ()
-        val (res_ptr,next_code,res_ty) = (case ty of
-              LLVM.array (_,sub_ty) => calculateArrayIndex next_ptr sub_ty indices dims scope fscope
-            | _ => (next_ptr,[],ty)
-          )
-        val code = i_code@[LLVM.GetElementPtr (next_ptr,LLVM.ptr ty,LLVM.Variable ptr,i_res)]@next_code
-      in
-        (res_ptr,code,res_ty)
-      end
-    | calculateArrayIndex ptr _ _ _ _ _ = raise (TranslationError "Attempt to index on a not an array!")
+  and calculateElemPtr var_array ty_array arg_index = let
+      val var_elems_ptr = makenextvar()
+      val var_elem_ptr = makenextvar()
+      val (LLVM.array ty_base) = ty_array
+      val code = [
+          LLVM.GetElementPtr (var_elems_ptr, ty_array, LLVM.Variable var_array,[LLVM.Int 0,LLVM.Int 1])
+        , LLVM.Bitcast (var_elems_ptr,LLVM.ptr LLVM.i8,LLVM.Variable var_elems_ptr,LLVM.ptr ty_base)
+        , LLVM.GetElementPtr (var_elem_ptr, LLVM.ptr ty_base, LLVM.Variable var_elems_ptr, [arg_index])
+      ]
+    in
+      (var_elem_ptr,LLVM.ptr ty_base,code)
+    end
 
   and arrayDimFromExps exps scope fscope = let
-      (*Makes sure all the elements of list are equal*)
-      fun all_equal [] = true
-        | all_equal [a] = true
-        | all_equal (a::b::cs) = if a <> b then false else all_equal (b::cs)
-      (*turns an expression into a dimension*)
-      fun elemToDim exp =
-          (case exp of 
-              Ast.Array sub_exps => arrayDimFromExps sub_exps scope fscope
-            | Ast.EmptyArray (_,dim) => dim
-            | exp => [])
       val first = length exps
-      val rest_list = map elemToDim exps
     in
-      if all_equal rest_list then
-        (first::(hd rest_list))
-      else
-        raise (TranslationError "Sub array dimensions do not match")
+        first
     end
 
   (*Hack to set variables correctly*)
@@ -176,9 +156,9 @@ struct
       | (Ast.Bool x) => (result, [LLVM.Alias ((LLVM.Variable result),(LLVM.Bool x))])
       (*needed for everything eles*)
       | exp => let
-          val (a,_,b) = translate exp scope fscope
+          val (res,ty,code) = translate exp scope fscope
         in
-          setResult result (a,b)
+          setResult result (LLVM.Variable res,code)
         end)
 
   and typeForFunc id [] = raise (TranslationError (concat ["Function '",id,"' not defined"]))
@@ -190,13 +170,16 @@ struct
     in
       (pres,LLVM.i32,code@[LLVM.Print (pres,ty,res)])
     end
-  | translate (Ast.Dim (level,id)) scope fscope = let
-      val i = makenextvar ()
-      fun levelDimOfType 0 (LLVM.array (dim,ty)) = dim
-        | levelDimOfType level (LLVM.array (dim,ty)) = levelDimOfType (level-1) ty
-        | levelDimOfType _ _ = 0
+  | translate (Ast.Dim (exp)) scope fscope = let
+      val var_size  = makenextvar ()
+      val (exp_code,exp_res,exp_ty) = evalArg scope fscope exp
+      val _ = case exp_ty of LLVM.array _ => () | _ => raise (TranslationError "Attempt to get dimension of non array")
+      val code = exp_code@[
+          LLVM.GetElementPtr (var_size, exp_ty, exp_res, [LLVM.Int 0, LLVM.Int 0])
+        , LLVM.Load (var_size, LLVM.ptr LLVM.i32, LLVM.Variable var_size)
+      ]
     in
-        (i,LLVM.i32,[LLVM.Alias (LLVM.Variable i, LLVM.Int (levelDimOfType level (getTypeForVar scope id)))])
+        (var_size,LLVM.i32,code)
     end
   | translate (Ast.Block asts) scope fscope = let
       val i = makenextvar ()
@@ -221,79 +204,61 @@ struct
       val code = [LLVM.Alias ((LLVM.Variable l), (LLVM.Bool i))]
     in (l,LLVM.i1,code) end
   | translate (Ast.Array (exps)) scope fscope =  let
-      (* hopefully will return the expression that corresponds to a given index into the array *)
-      fun getExpForIndex [] [] = raise (TranslationError "Something terrible has happened!")
-        | getExpForIndex [] (exp::exps) = raise (TranslationError "Something terrible but not that first thing has happened!")
-        | getExpForIndex _ [] =  raise (TranslationError "Something terrible but not that first or second thing has happened!")
-        | getExpForIndex [0] (exp::exps) = exp
-        | getExpForIndex (0::indices) ((Ast.Array sub_exps)::exps) = getExpForIndex indices sub_exps
-        | getExpForIndex (0::indices) (_::exps) = raise (TranslationError "Array dimensions do not match for all elements yo!")
-        | getExpForIndex (i::indices) (exp::exps) = getExpForIndex ((i-1)::indices) exps
-
-      fun enumDims [] = [[]]
-        | enumDims (1::dims) = (map (fn a => 0::a) (enumDims dims))
-        | enumDims (d::dims) = (map (fn a => (d-1)::a) (enumDims dims))@(enumDims ((d-1)::dims))
-
-      val dim = arrayDimFromExps exps scope fscope
       val new_res = makenextvar ()
       (* Find the highest type in expressions *)
-      val ((_,ty)::types) = map (fn d => let val (r,t,_) = translate (getExpForIndex d exps) scope fscope in (r,t) end) (enumDims dim)
-      val high_type = highestType ty types
+      val ((_,e_ty)::types) = map (fn e => let val (r,t,_) = translate e scope fscope in (r,t) end) exps
+      val high_type = highestType e_ty types
 
-      val (res,ty,create_code) = translate (Ast.EmptyArray (high_type,dim)) scope fscope
-      (*val _ = map (fn d => (map (print o Int.toString) d,print "\n")) (enumDims dim)*)
+      val (res,res_ty,create_code) = translate (Ast.EmptyArray (high_type,length exps)) scope fscope
 
-      val update_code = foldl (fn (i,prev_code) => let
-              val (ptr,ptr_code,ty) = calculateArrayIndex res (llvmTypeForDim high_type dim) (map Ast.Int i) dim scope fscope
-              val (exp_code,exp_res,exp_ty) = evalArg scope fscope (getExpForIndex i exps)
+      val (_,update_code) = foldl (fn (e,(i,prev_code)) => let
+              val (ptr,ty,ptr_code) = calculateElemPtr res res_ty (LLVM.Int i)
+              val (exp_code,exp_res,exp_ty) = evalArg scope fscope e
               val (alias_code,[var]) = ensureVars [exp_res]
               val (exp_cast,exp_ty) = resolveType' [] high_type [(var,exp_ty)]
             in
-              prev_code@ptr_code@exp_code@alias_code@exp_cast@[LLVM.Store (high_type,LLVM.Variable var,LLVM.Variable ptr)]
+              (i+1,prev_code@ptr_code@exp_code@alias_code@exp_cast@[LLVM.Store (high_type,LLVM.Variable var,LLVM.Variable ptr)])
             end
-          ) [] (enumDims dim)
+          ) (0,[]) exps
     in
-      (new_res,ty,create_code@update_code@[LLVM.Alias (LLVM.Variable new_res,LLVM.Variable res)])
+      (new_res,res_ty,create_code@update_code@[LLVM.Alias (LLVM.Variable new_res,LLVM.Variable res)])
     end
-  | translate (Ast.EmptyArray (pty,dims)) scope fscope =  let
-      val l = makenextvar ()
-      val l2 = makenextvar ()
-      val ty = llvmTypeForDim pty dims
-      (*val code = [LLVM.Alloca (l,ty,1)]*)
+  | translate (Ast.EmptyArray (pty,dim)) scope fscope =  let
+      val var_malloc = makenextvar ()
+      val var_array = makenextvar ()
+      val var_size_ptr = makenextvar ()
+      val var_res = makenextvar ()
+      val ty = LLVM.array pty
       val code = [
-          LLVM.Call (l,LLVM.ptr LLVM.i8,"malloc",[(LLVM.Int (LLVM.sizeOfType ty),LLVM.i32)])
-        , LLVM.Bitcast (l2,LLVM.ptr LLVM.i8,LLVM.Variable l,LLVM.ptr ty)
+          LLVM.Call (var_malloc,LLVM.ptr LLVM.i8,"malloc",[(LLVM.Int (8+(LLVM.sizeOfType ty)*dim),LLVM.i32)]) (*the extra 4 is for size info*)
+        , LLVM.Bitcast (var_array,LLVM.ptr LLVM.i8,LLVM.Variable var_malloc,ty)
+        , LLVM.GetElementPtr (var_size_ptr, ty, LLVM.Variable var_array, [LLVM.Int 0, LLVM.Int 0])
+        , LLVM.Store (LLVM.i32, LLVM.Int dim, LLVM.Variable var_size_ptr)
+        , LLVM.Alias (LLVM.Variable var_res,LLVM.Variable var_array)
       ]
     in
-      (l2,ty,code)
+      (var_res,ty,code)
     end
-  | translate (Ast.ArrayIndex (id,indices)) scope fscope = 
-      (case getTypeForVar scope id of
-        (ty as LLVM.array _) => let
-            (*val ty = llvmTypeForDim LLVM.i32 dim*)
-            val dim = dimFromLLVMType ty
-            (*val base_ty = arrayBaseType ty*)
-            val (i_ptr,i_code,i_ty) = calculateArrayIndex id ty indices dim scope fscope
-            val res' = makenextvar ()
-            (* if we are indexing a sub array then we don't need to load *)
-            val (res,code) = (
-                case i_ty of
-                  LLVM.array _ => (i_ptr,i_code)
-                  | _ => (res',i_code@[LLVM.Load (res',LLVM.ptr i_ty,LLVM.Variable i_ptr)])
-              )
-          in
-            (res,i_ty,code)
-          end
-        | _ => raise (TranslationError (concat ["Attempt to index non-array variable '",id,"'"]))
-      )
+  | translate (Ast.ArrayIndex (exp,index)) scope fscope = let
+        val (exp_code,exp_res,exp_ty) = evalArg scope fscope exp
+        val (i_code,i_res,i_ty) = evalArg scope fscope index
+
+        (* error checking *)
+        val base_ty = case exp_ty of LLVM.array t => t | _ => raise (TranslationError "Can only index arrays!!!")
+        val _ = case i_ty of LLVM.i32 => () | _ => raise (TranslationError "Index of an array must be an int!")
+
+        val (alias_code,[var]) = ensureVars [exp_res]
+        val (ptr_res,ptr_ty,ptr_code) = calculateElemPtr var exp_ty i_res
+        val var_res = makenextvar ()
+
+        val code = exp_code@i_code@alias_code@ptr_code@[
+            LLVM.Load (var_res,ptr_ty,LLVM.Variable ptr_res)
+        ]
+      in
+        (var_res,base_ty,code)
+      end
   | translate (Ast.Var (x)) scope fscope =  let
-  (*
-      val l = makenextvar ()
-      val code = [LLVM.Load (l,LLVM.pi32,(LLVM.Variable x))]
-      val l = makenextvar ()
-      *)
-      (* val code = [LLVM.Add (l,LLVM.i32, (LLVM.Num 0), (LLVM.Variable x))] *)
-      val ty = getTypeForVar scope x (*we don't really care what the type is, we care if it's bound and this will bitch if it isn't*)
+      val ty = getTypeForVar scope x
       val code = []
     in
       (x,ty,code)
@@ -437,7 +402,7 @@ struct
             in
               code @alias_code @cast_code
               (* store the value in the struct *)
-              @[  LLVM.GetElementPtr (var_val_ptr,LLVM.ptr form_type,LLVM.Variable var_form_type,LLVM.Int i)
+              @[  LLVM.GetElementPtr (var_val_ptr,LLVM.ptr form_type,LLVM.Variable var_form_type,[LLVM.Int 0,LLVM.Int i])
                 , LLVM.Store (t,LLVM.Variable var,LLVM.Variable var_val_ptr)
               ]@(initialize (i+1) xs)
             end
@@ -446,10 +411,10 @@ struct
               LLVM.Call (var_malloc, LLVM.ptr LLVM.i8, "malloc", [(LLVM.Int (LLVM.sizeOfType user_type),LLVM.i32)])
             , LLVM.Bitcast (var_T_type, LLVM.ptr LLVM.i8, LLVM.Variable var_malloc, LLVM.ptr LLVM.usertype_parent)
             (* set the form tracker *)
-            , LLVM.GetElementPtr (var_form_ptr,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,LLVM.Int 0)
+            , LLVM.GetElementPtr (var_form_ptr,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,[LLVM.Int 0,LLVM.Int 0])
             , LLVM.Store (LLVM.i32,LLVM.Int (LLVM.getFormIndex form),LLVM.Variable var_form_ptr)
             (* grab a pointer to the data portion *)
-            , LLVM.GetElementPtr (var_form_type,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,LLVM.Int 1)
+            , LLVM.GetElementPtr (var_form_type,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,[LLVM.Int 0,LLVM.Int 1])
             , LLVM.Bitcast (var_form_type, LLVM.ptr LLVM.i8, LLVM.Variable var_form_type, LLVM.ptr form_type)
           ]@(initialize 0 (ListPair.zip (types,exps)))@[
               LLVM.Alias (LLVM.Variable var_result, LLVM.Variable var_malloc) 
@@ -510,7 +475,7 @@ struct
             | extractVars i ((x,ty)::xs) = let
                 val var_x = makenextvar ()
               in
-                [   LLVM.GetElementPtr (var_x,LLVM.ptr (LLVM.usertype_form (ty_name,form)),LLVM.Variable var_struct_ptr,LLVM.Int i)
+                [   LLVM.GetElementPtr (var_x,LLVM.ptr (LLVM.usertype_form (ty_name,form)),LLVM.Variable var_struct_ptr,[LLVM.Int 0,LLVM.Int i])
                   , LLVM.Load (x,LLVM.ptr ty,LLVM.Variable var_x)
                 ]@(extractVars (i+1) xs)
               end
@@ -519,7 +484,7 @@ struct
           val code =
             [   (* define the branch label and extract the values *)
                 LLVM.DefnLabel label_branch
-              , LLVM.GetElementPtr (var_struct_ptr,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,LLVM.Int 1)
+              , LLVM.GetElementPtr (var_struct_ptr,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,[LLVM.Int 0,LLVM.Int 1])
               , LLVM.Bitcast (var_struct_ptr, LLVM.ptr LLVM.i8, LLVM.Variable var_struct_ptr, LLVM.ptr (LLVM.usertype_form (ty_name,form)))
             ]@extract_code@then_code@[
                 LLVM.Br (LLVM.Label label_exit)
@@ -566,7 +531,7 @@ struct
         exp_code@[
             LLVM.Bitcast (var_T_type, exp_ty, exp_res, LLVM.ptr LLVM.usertype_parent)
           (* get the form tracker *)
-          , LLVM.GetElementPtr (var_form_ptr,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,LLVM.Int 0)
+          , LLVM.GetElementPtr (var_form_ptr,LLVM.ptr LLVM.usertype_parent,LLVM.Variable var_T_type,[LLVM.Int 0,LLVM.Int 0])
           , LLVM.Load (var_form,LLVM.ptr LLVM.i32,LLVM.Variable var_form_ptr)
         ]@jump_code@[
             LLVM.DefnLabel label_default
@@ -611,8 +576,8 @@ struct
       (*set the result of both the true and false expressions to result*)
       val (tres,tty,tcode) = translate texp scope fscope
       val (fres,fty,fcode) = translate fexp scope fscope
-      val (_,tcode) = setResult result (tres,tcode)
-      val (_,fcode) = setResult result (fres,fcode)
+      val (_,tcode) = setResult result (LLVM.Variable tres,tcode)
+      val (_,fcode) = setResult result (LLVM.Variable fres,fcode)
       val exp_ty = highestType fty [(tres,tty)] (*what type should the be cast too, or error or whatever*)
       (*need separate casting code*)
       val (t_cast_code,_) = resolveType' [] exp_ty [(result,tty)]
@@ -629,31 +594,33 @@ struct
         , LLVM.DefnLabel l_out
       ])
     end
-  | translate (Ast.AssignArray (id,index,exp)) scope fscope = 
-    (case getTypeForVar scope id of
-        (ty as LLVM.array _) => let
-            (*val ty = llvmTypeForDim LLVM.i32 dim*)
-            val dim = dimFromLLVMType ty
-            val (i_ptr,i_code,i_ty) = calculateArrayIndex id ty index dim scope fscope
-            val (vcode,vres,vty) = evalArg scope fscope exp
-            val (alias_code,[var]) = ensureVars [vres]
-            val (cast_code,_) = resolveType' [] i_ty [(var,vty)]
-            val code = i_code@vcode@alias_code@cast_code@[LLVM.Store (i_ty,LLVM.Variable var,LLVM.Variable i_ptr)]
-          in
-            (i_ptr,i_ty,code)
-          end
-      | _ => raise (TranslationError (concat ["Attempt to index non-array variable '",id,"'"]))
-    )
+  | translate (Ast.AssignArray (exp,index,val_exp)) scope fscope = let
+        val (exp_code,exp_res,exp_ty) = evalArg scope fscope exp
+        val (i_code,i_res,i_ty) = evalArg scope fscope index
+        val (val_code,val_res,val_ty) = evalArg scope fscope val_exp
+
+        (*val _ = case val_exp of Ast.EmptyArray _ => print "FUcK YEAH!\n" | _ => print "FUCK NO!\n"*)
+
+        (* error checking *)
+        val base_ty = case exp_ty of LLVM.array t => t | _ => raise (TranslationError "Can only index arrays!!!")
+        val _ = case i_ty of LLVM.i32 => () | _ => raise (TranslationError "Index of an array must be an int!")
+        (*casting and error checking*)
+        val (val_alias_code,[var]) = ensureVars [val_res]
+        (* val (val_cast_code,_) = resolveType' [] base_ty [(var,val_ty)] *)
+        val val_cast_code = []
+
+        val (alias_code,[var_exp]) = ensureVars [exp_res]
+        val (ptr_res,ptr_ty,ptr_code) = calculateElemPtr var_exp exp_ty i_res
+        val var_res = makenextvar ()
+
+        val code = exp_code@i_code@alias_code@ptr_code@val_code@val_alias_code@val_cast_code@[
+            LLVM.Store (base_ty,val_res,LLVM.Variable ptr_res)
+          , LLVM.Alias (LLVM.Variable var_res,val_res)
+        ]
+      in
+        (var_res,base_ty,code)
+      end
   | translate (Ast.Assign (id,exp)) scope fscope = 
-  (*let
-      val (vcode,varg) = evalArg exp
-      val l = makenextvar ()
-    in
-      (l, vcode@[
-          LLVM.Store (LLVM.i32,varg,(LLVM.Variable id))
-        , LLVM.Load (l,LLVM.pi32,(LLVM.Variable id))
-      ])
-    end *)
     let
       val (vres,vcode) = setVariable id exp scope fscope
       val ty = getTypeForVar scope id
@@ -664,21 +631,18 @@ struct
       (*val (vcode,varg) = evalArg exp*)
       (*too tired to think of how to do this in an intelligent way, just grab the type of the expression...*)
       val (_,vty,_) = translate exp scope fscope
+      (*
       val new_scope = (id,(case exp of
-              (Ast.Array exps) => llvmTypeForDim (arrayBaseType vty) (arrayDimFromExps exps scope fscope)
-            | (Ast.EmptyArray (ty,dim)) => llvmTypeForDim ty dim
+              (Ast.Array exps) => vty
+            | (Ast.EmptyArray (ty,dim)) => LLVM.array ty
             | _ => vty
           ))::scope
+      *)
+      val new_scope = (id,vty)::scope
 
       val (vres,vcode) = setVariable id exp new_scope fscope
       val (res,ty,code) = translate inexp new_scope fscope
     in
-    (*
-      (res, vcode@[
-          LLVM.Alloca (id,LLVM.i32)
-        , LLVM.Store (LLVM.i32,varg,(LLVM.Variable id))
-      ]@code)
-      *)
       (res,ty,vcode@code)
     end
   | translate (Ast.Fun (fid,xids,ty,fexp,inexp)) scope fscope = let

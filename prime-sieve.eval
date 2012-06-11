@@ -2,15 +2,15 @@ let sieve = [int]#100 in
 let i = 0 in
 let j = 0 in
 do
-  for(i:=0; i<dim(0,sieve); i:=i+1)
+  for(i:=0; i<dim(sieve); i:=i+1)
     sieve[i] := i+2
   ;
-  for(i:=0; i<dim(0,sieve); i:=i+1)
+  for(i:=0; i<dim(sieve); i:=i+1)
     let n = sieve[i] in
-    for(j:=i+n; n!=~1 and j<dim(0,sieve); j:=j+n)
+    for(j:=i+n; n!=~1 and j<dim(sieve); j:=j+n)
       sieve[j] := ~1
   ;
-  for(i:=0; i<dim(0,sieve); i:=i+1)
+  for(i:=0; i<dim(sieve); i:=i+1)
     if sieve[i] != ~1 then
       print sieve[i]
     else

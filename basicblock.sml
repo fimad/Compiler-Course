@@ -181,7 +181,7 @@ struct
       fun arg2use code (LLVM.Variable s) = [(s,code)]
         | arg2use _ _ = []
       fun op2use (code as (LLVM.Load (_,_,a))) = arg2use code a
-        | op2use (code as (LLVM.GetElementPtr (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
+        | op2use (code as (LLVM.GetElementPtr (_,_,a1,args))) = (arg2use code a1)@(List.concat (map (arg2use code) args))
         | op2use (code as (LLVM.Store (_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Add (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
         | op2use (code as (LLVM.Sub (_,_,a1,a2))) = (arg2use code a1)@(arg2use code a2)
