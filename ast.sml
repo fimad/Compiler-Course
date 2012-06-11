@@ -5,8 +5,7 @@ sig
   (* Definition of the AST
    * ast is a datatype encapsulating the abstract syntax of the language e *)
   datatype ast
-    = Program of (LLVM.UserType list)*ast
-    | Var of string
+    = Var of string
     | Dim of ast (*statically gets the int level dimension of an array*) (*0 for non arrays*)
     | Block of ast list
     | Print of ast
@@ -38,7 +37,10 @@ sig
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
     | AssignArray of ast*ast*ast
     | Let of string*ast*ast
-    | Fun of string*((string*LLVM.Type) list)*LLVM.Type*ast*ast
+
+  type Function = string*((string*LLVM.Type) list)*LLVM.Type*ast
+  datatype CompilerTarget = CompilerTarget of (LLVM.UserType list)*(Function list)*ast
+
   (*
    * enval is a datatype that covers the possible values that can be stored in the
    * environment. As of now this includes, the various functions and integers
@@ -66,8 +68,7 @@ end
 structure Ast :> AST = 
 struct
   datatype ast
-    = Program of (LLVM.UserType list)*ast
-    | Var of string
+    = Var of string
     | Int of int
     | Float of real
     | Bool of int
@@ -97,7 +98,9 @@ struct
     | Assign of string*ast (*like a let, but assumes the variable is already defined*)
     | AssignArray of ast*ast*ast
     | Let of string*ast*ast
-    | Fun of string*((string*LLVM.Type) list)*LLVM.Type*ast*ast
+
+  type Function = string*((string*LLVM.Type) list)*LLVM.Type*ast
+  datatype CompilerTarget = CompilerTarget of (LLVM.UserType list)*(Function list)*ast
 
   datatype enval
     = Val of int
@@ -190,13 +193,6 @@ and showTree x (Ast.Var str) = indent x (concat ["Var(",str,")"])
     in () end
   | showTree x (Ast.Let (str,e1,e2)) =  let
       val _ = indent x (concat ["Let(",str,")"])
-      val _ = showTree (x+1) e1
-      val _ = showTree (x+1) e2
-    in () end
-  | showTree x (Ast.Fun (f,y,t,e1,e2)) = let
-      val _ = indent x (concat ["Fun( ",f,"("])
-      val _ = showStringList (x+1) (map #1 y)
-      val _ = indent x ") )"
       val _ = showTree (x+1) e1
       val _ = showTree (x+1) e2
     in () end

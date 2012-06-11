@@ -645,11 +645,8 @@ struct
     in
       (res,ty,vcode@code)
     end
-  | translate (Ast.Fun (fid,xids,ty,fexp,inexp)) scope fscope = let
-      fun zipI32 [] = []
-        | zipI32 (x::xs) = (x,LLVM.i32)::(zipI32 xs)
-      fun zipInt [] = []
-        | zipInt (x::xs) = (x,LLVM.i32)::(zipInt xs)
+
+  fun compileFun scope fscope ((fid,xids,ty,fexp)) = let
       val (fcode,farg,fty) = evalArg (xids@scope) fscope fexp
       (* change xids so that it doesn't affect the scope*)
       (* arrays are weird, sometimes the look like pointers, sometimes not..*)
@@ -668,18 +665,21 @@ struct
         (* lists are silly, just pass the args in backwards *)
       val _ = addMethod (fid,ty,rev xids,methodBody)
     in
-      translate inexp scope fscope
+      (*translate inexp scope fscope*)
+      ()
     end
 
   (*make a scope of all functions and their types*)
-  fun getFunScope (Ast.Fun (id,_,ty,_,exp)) = (id,ty)::(getFunScope exp)
-    | getFunScope (Ast.Let (_,_,exp)) = getFunScope exp
-    | getFunScope _ = []
+  fun getFunScope [] = []
+    | getFunScope ((id,_,ty,_)::funs) = (id,ty)::(getFunScope funs)
 
-  fun compile (Ast.Program (types,ast)) = let
+  fun compile (Ast.CompilerTarget (types,funs,ast)) = let
     val _ = map LLVM.addUserType types (*add the user types to the scope*)
-    val funScope = getFunScope ast
+    val funScope = getFunScope funs
+
+    val _ = map (compileFun [] funScope) funs
     val (mainBody,vres,vty) = evalArg [] funScope ast
+
     val res = case vres of
         (LLVM.Variable v) => v
       | (LLVM.Int i) => Int.toString(i)
