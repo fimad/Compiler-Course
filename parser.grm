@@ -36,7 +36,7 @@ structure Ast = Ast
     | EOF
 %nonterm LETDEF of Ast.ast
        | EXP of Ast.ast
-       | START of Ast.ast
+       | START of Ast.CompilerTarget
        | PARAMS of (string*LLVM.Type) list
        | EXPLIST of Ast.ast list
        | ARRAY_DIM of int
@@ -55,11 +55,15 @@ structure Ast = Ast
        | CASE_THENS of (string*string list*Ast.ast) list
        | CASE_THEN of string*string list*Ast.ast
        | OTHERWISE_THEN of Ast.ast
+       | FUNC_LIST of Ast.Function list
+       | FUNC of Ast.Function
 
 %%
 
-START : TYPES STATEMENT EOF       (Ast.Program (TYPES,STATEMENT))
-      | STATEMENT EOF             (Ast.Program ([],STATEMENT))
+START : TYPES FUNC_LIST STATEMENT EOF       ((TYPES,FUNC_LIST,STATEMENT))
+      | FUNC_LIST STATEMENT EOF             (([],FUNC_LIST,STATEMENT))
+      | TYPES STATEMENT EOF                 ((TYPES,[],STATEMENT))
+      | STATEMENT EOF                       (([],[],STATEMENT))
 
 TYPES : TYPE_DEF                  ([TYPE_DEF])
       | TYPE_DEF TYPES            (TYPE_DEF::TYPES)
@@ -73,6 +77,14 @@ TYPE_FORM : ID OF TYPE_LIST       ((ID,TYPE_LIST))
 
 TYPE_LIST : TYPE                  ([TYPE])
           | TYPE MULT TYPE_LIST   (TYPE::TYPE_LIST)
+
+FUNC_LIST : FUNC                  ([FUNC])
+          | FUNC FUNC_LIST        (FUNC::FUNC_LIST)
+
+FUNC : FUN ID LPAREN PARAMS RPAREN COLON TYPE EQ STATEMENT END  ((ID,PARAMS,TYPE,STATEMENT))
+
+PARAMS : ID COLON TYPE                      ([(ID,TYPE)])
+       | ID COLON TYPE COMMA PARAMS          ((ID,TYPE)::PARAMS)
 
 STATEMENT : EXP                   (EXP)
           | DO_BLOCK              (DO_BLOCK)
@@ -129,16 +141,13 @@ ARRAY_DIM : POUND INT             (INT)
 
 EXPLIST : EXP                     ([EXP])
         | EXP COMMA EXPLIST       (EXP::EXPLIST)
-        | EXP SEMICOLON EXPLIST       (EXP::EXPLIST)
+        | EXP SEMICOLON EXPLIST   (EXP::EXPLIST)
+        | EXP EXPLIST             (EXP::EXPLIST)
 
 ID_LIST : ID                      ([ID])
         | ID COMMA ID_LIST        (ID::ID_LIST)
 
 LETDEF : LET ID EQ STATEMENT IN STATEMENT                           (Ast.Let(ID,STATEMENT1,STATEMENT2))
-       | FUN ID LPAREN PARAMS RPAREN COLON TYPE EQ STATEMENT IN STATEMENT   (Ast.Fun(ID,PARAMS,TYPE,STATEMENT1,STATEMENT2))
-
-PARAMS : ID COLON TYPE                      ([(ID,TYPE)])
-       | ID COLON TYPE COMMA PARAMS          ((ID,TYPE)::PARAMS)
 
 TYPE : PRIMITIVE_TYPE                                         (PRIMITIVE_TYPE)
      | START_ARRAY TYPE END_ARRAY                             (LLVM.array TYPE)
