@@ -31,6 +31,8 @@ struct
     | Load of Result*Type*Arg
     | Store of Type*Arg*Arg
     | GetElementPtr of Result*Type*Arg*(Arg list)
+    | ExtractElement of Result*Type*Arg*Arg
+    | InsertElement of Result*Type*Arg*Type*Arg*Arg
     | Add of Result*Type*Arg*Arg
     | Sub of Result*Type*Arg*Arg
     | Mul of Result*Type*Arg*Arg
@@ -215,6 +217,8 @@ struct
     | resultOf (CmpLe (res,ty,a1,a2)) = SOME res
     | resultOf (Alloca (res,ty,num)) = SOME res
     | resultOf (GetElementPtr (res,ty,_,_)) = SOME res
+    | resultOf (ExtractElement (res,ty,_,_)) = SOME res
+    | resultOf (InsertElement (res,ty,_,_,_,_)) = SOME res
     | resultOf (Call (res,ty,name,args)) = SOME res
     | resultOf (TailCall (res,ty,name,args)) = SOME res
     | resultOf _ = NONE
@@ -229,6 +233,8 @@ struct
           | replOP (Bitcast (res,ty1,a1,ty2)) = Bitcast (res,ty1,(replArg a1),ty2)
           | replOP (Store (ty,a1,a2)) = Store (ty,(replArg a1),(replArg a2))
           | replOP (GetElementPtr (res,ty1,a1,args)) = GetElementPtr (res,ty1,(replArg a1),(map replArg args))
+          | replOP (ExtractElement (res,ty1,a1,args)) = ExtractElement (res,ty1,(replArg a1),(replArg args))
+          | replOP (InsertElement (res,ty1,a1,ty2,a2,a3)) = InsertElement (res,ty1,(replArg a1),ty2,(replArg a2),(replArg a3))
           | replOP (Add (res,ty,a1,a2)) = Add (res,ty,(replArg a1),(replArg a2))
           | replOP (Sub (res,ty,a1,a2)) = Sub (res,ty,(replArg a1),(replArg a2))
           | replOP (Mul (res,ty,a1,a2)) = Mul (res,ty,(replArg a1),(replArg a2))
@@ -261,7 +267,9 @@ struct
     | printOP (Bitcast (res,ty1,arg,ty2)) =  concat [h_printROP res "bitcast" ty1 [arg]," to ",printType ty2]
     | printOP (Load (res,ty,arg)) =  h_printROP res "load" ty [arg]
     (*| printOP (GetElementPtr (res,ty1,a1,a2)) = concat ["%",res," = getelementptr inbounds ",(printType ty1)," ",(printArg a1),", i32 0",", i32 ",(printArg a2)]*)
-    | printOP (GetElementPtr (res,ty1,a1,args)) = concat ["%",res," = getelementptr inbounds ",(printType ty1)," ",(printArg a1),concat (map (fn a=>concat[", i32 ",printArg a]) args)]
+    | printOP (GetElementPtr (res,ty,a1,args)) = concat ["%",res," = getelementptr ",(printType ty)," ",(printArg a1),concat (map (fn a=>concat[", i32 ",printArg a]) args)]
+    | printOP (ExtractElement (res,ty,a1,a2)) = concat ["%",res," = extractelement ",(printType ty)," ",(printArg a1),", i32", printArg a2]
+    | printOP (InsertElement (res,ty1,a1,ty2,a2,a3)) = concat ["%",res," = insertelement ",(printType ty1)," ",(printArg a1),printType ty2," ",printArg a2,", i32", printArg a3]
     | printOP (Store (ty,a1,a2)) =  concat [(h_printOP "store" ty [a1]),", ",(printType ty),"* ",(printArg a2)]
     | printOP (Add (res,float,a1,a2)) =  h_printROP res "fadd" float [a1, a2]
     | printOP (Add (res,ty,a1,a2)) =  h_printROP res "add" ty [a1, a2]
