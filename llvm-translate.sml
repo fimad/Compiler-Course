@@ -134,11 +134,6 @@ struct
       (var_elem_ptr,LLVM.ptr ty_base,code)
     end
 
-  and isConstantExpr (Ast.Int _) = true
-    | isConstantExpr (Ast.Float _) = true
-    | isConstantExpr (Ast.Bool _) = true
-    | isConstantExpr _ = false
-
   (*Hack to set variables correctly*)
   and setVariable result exp scope fscope = 
     (case exp of
@@ -551,6 +546,10 @@ struct
       val (init_code,init_res,_) = evalArg scope fscope init_exp
       val res = makenextvar()
 
+      (* a useful function that repeats something i times *)
+      fun repeat 0 _ = []
+        | repeat i x = x::(repeat (i-1) x)
+
       (* Does an ast contain a loop
          We only want to unroll the most inner loop, otherwise, it gets crazy
        *)
@@ -577,22 +576,111 @@ struct
                             else NONE
         | isConstLoop _ _ = NONE
 
+      (*
+      fun isConstantExpr (Ast.Int _) = true
+        | isConstantExpr (Ast.Float _) = true
+        | isConstantExpr (Ast.Bool _) = true
+        | isConstantExpr _ = false
+      fun isVariableExpr (Ast.Var _) = true
+        | isVariableExpr _ = false
+      *)
+      fun isSimpleArrayIndex loop_var (Ast.ArrayIndex (_,Ast.Var i)) = i = loop_var
+        | isSimpleArrayIndex loop_var _ = false
+      (*fun isConstOrVar a = isConstantExpr a orelse isVariableExpr a orelse isSimpleArrayIndex a*)
+
+      (*
+      fun isIndependentOf v [] = true
+        | isIndependentOf v ((Ast.Var v')::asts) = v <> v' andalso isIndependentOf v asts
+        | isIndependentOf v (_::asts) = isIndependentOf v asts
+      *)
+
+      (* is exp a simple assignment expression?
+         used for vector optimizations
+       *)
+      fun isSimpleExpr loop_var (Ast.AssignArray (_,Ast.Var i,Ast.Plus (a,b))) = isSimpleArrayIndex loop_var a andalso isSimpleArrayIndex loop_var b andalso loop_var = i
+        | isSimpleExpr loop_var (Ast.AssignArray (_,Ast.Var i,Ast.Minus (a,b))) = isSimpleArrayIndex loop_var a andalso isSimpleArrayIndex loop_var b andalso loop_var = i
+        | isSimpleExpr loop_var (Ast.AssignArray (_,Ast.Var i,Ast.Div (a,b))) = isSimpleArrayIndex loop_var a andalso isSimpleArrayIndex loop_var b andalso loop_var = i
+        | isSimpleExpr loop_var (Ast.AssignArray (_,Ast.Var i,Ast.Mult (a,b))) = isSimpleArrayIndex loop_var a andalso isSimpleArrayIndex loop_var b andalso loop_var = i
+        | isSimpleExpr _ _ = false
+
+      (* uses vector operations on simple expressions *)
+      fun vectorizeRepeat unroll = let
+          fun getArgs (Ast.Plus (a,b)) = (a,b)
+            | getArgs (Ast.Minus (a,b)) = (a,b)
+            | getArgs (Ast.Div (a,b)) = (a,b)
+            | getArgs (Ast.Mult (a,b)) = (a,b)
+
+          fun vectorTranslate result ty var1 var2 (Ast.Plus _) = LLVM.Add (result,ty,LLVM.Variable var1,LLVM.Variable var2)
+            | vectorTranslate result ty var1 var2 (Ast.Minus _) = LLVM.Sub (result,ty,LLVM.Variable var1,LLVM.Variable var2)
+            | vectorTranslate result ty var1 var2 (Ast.Div _) = LLVM.Div (result,ty,LLVM.Variable var1,LLVM.Variable var2)
+            | vectorTranslate result ty var1 var2 (Ast.Mult _) = LLVM.Mul (result,ty,LLVM.Variable var1,LLVM.Variable var2)
+
+          (*if argument is an array indexed on the loop variable we can load directly from the array to the vector
+            the argument must also be of a type that requires no casts
+           *)
+          fun quickLoadArray loop_var exp_array ty_vector var_result = let
+              val (var_array,ty_array,code_array) = translate exp_array scope fscope
+              val (var_result_ptr,ty_result_ptr,code_result_ptr) = calculateElemPtr var_array ty_array (LLVM.Variable loop_var)
+              val var_vector_ptr = makenextvar ()
+            in
+              code_array@code_result_ptr@[
+                  LLVM.Bitcast (var_vector_ptr,ty_result_ptr,LLVM.Variable var_result_ptr,LLVM.ptr ty_vector)
+                , LLVM.Load (var_result,LLVM.ptr ty_vector,LLVM.Variable var_vector_ptr)
+              ]
+            end
+
+          val Ast.AssignArray (exp_array,Ast.Var loop_var,exp_do) = doexp
+          val (exp_a,exp_b) = getArgs exp_do
+
+          (* get the pointer for where to store the result *)
+          val (var_array,ty_array,code_array) = translate exp_array scope fscope
+          val (var_result_ptr,ty_result_ptr,code_result_ptr) = calculateElemPtr var_array ty_array (LLVM.Variable loop_var)
+          val var_vector_ptr = makenextvar ()
+
+          val ty_vector = LLVM.vector (unroll,arrayBaseType ty_array)
+
+          val var_vector_a = makenextvar ()
+          val var_vector_b = makenextvar ()
+          val var_vector_res = makenextvar ()
+
+          val code_insert =
+               (quickLoadArray loop_var exp_a ty_vector var_vector_a)
+              @(quickLoadArray loop_var exp_b ty_vector var_vector_b)
+        in
+          code_array@code_result_ptr@code_insert@[
+              vectorTranslate var_vector_res ty_vector var_vector_a var_vector_b exp_do
+            , LLVM.Bitcast (var_vector_ptr,ty_result_ptr,LLVM.Variable var_result_ptr,LLVM.ptr ty_vector)
+            , LLVM.Store (ty_vector,LLVM.Variable var_vector_res,LLVM.Variable var_vector_ptr)
+            , LLVM.Add (loop_var,getTypeForVar scope loop_var,LLVM.Variable loop_var,LLVM.Int unroll) (*increment the loop counter*)
+          ]
+        (*and calculateElemPtr var_array ty_array arg_index = let*)
+        end
+
+      (* simply interweaves do and step unroll times *)
+      fun naiveRepeat unroll = let
+            val (step_code,step_res,_) = evalArg scope fscope step_exp
+            val (do_code,do_res,_) = evalArg scope fscope doexp
+        in
+          ((List.concat o repeat unroll) (do_code@step_code))
+        end
+
+      (*Unrolls a loop with a known min and max
+        the do_code will contain no conditional checks
+       *)
       fun constUnrollLoop unroll loop_var max = let
             val (cond_code,cond_res,cond_ty) = evalArg scope fscope cond_exp
             val _ = ensureType LLVM.i1 [cond_ty]
-
-            val (step_code,step_res,_) = evalArg scope fscope step_exp
-            val (do_code,do_res,_) = evalArg scope fscope doexp
-
             val loop_start_label = makenextlabel ()
 
-            fun repeat 0 _ = []
-              | repeat i x = x::(repeat (i-1) x)
+            val do_code = case (!config_vectorize,isSimpleExpr loop_var doexp) of
+                (false,_) => naiveRepeat unroll
+              | (_,false) => naiveRepeat unroll
+              | (_,true) => vectorizeRepeat unroll
         in
             cond_code@[
               LLVM.CndBr(cond_res,LLVM.Label(loop_start_label),LLVM.Label(loop_end_label))
             , LLVM.DefnLabel(loop_start_label)
-            ] @ ((List.concat o repeat unroll) (do_code@step_code))
+            ] @ do_code
         end
 
       (*unrolls a loop i times
