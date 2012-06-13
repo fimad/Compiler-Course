@@ -576,45 +576,13 @@ struct
                             else NONE
         | isConstLoop _ _ = NONE
 
-      (*
-      fun isConstantExpr (Ast.Int _) = true
-        | isConstantExpr (Ast.Float _) = true
-        | isConstantExpr (Ast.Bool _) = true
-        | isConstantExpr _ = false
-      fun isVariableExpr (Ast.Var _) = true
-        | isVariableExpr _ = false
-      *)
-      fun isSimpleArrayIndex loop_var (Ast.ArrayIndex (_,Ast.Var i)) = i = loop_var
-        | isSimpleArrayIndex loop_var _ = false
-      (*fun isConstOrVar a = isConstantExpr a orelse isVariableExpr a orelse isSimpleArrayIndex a*)
-
-      (*
-      fun isIndependentOf v [] = true
-        | isIndependentOf v ((Ast.Var v')::asts) = v <> v' andalso isIndependentOf v asts
-        | isIndependentOf v (_::asts) = isIndependentOf v asts
-      *)
-
-      (* is exp a simple assignment expression?
-         used for vector optimizations
-       *)
-      fun isSimpleExpr loop_var (Ast.AssignArray (_,Ast.Var i,Ast.Plus (a,b))) = isSimpleArrayIndex loop_var a andalso isSimpleArrayIndex loop_var b andalso loop_var = i
-        | isSimpleExpr loop_var (Ast.AssignArray (_,Ast.Var i,Ast.Minus (a,b))) = isSimpleArrayIndex loop_var a andalso isSimpleArrayIndex loop_var b andalso loop_var = i
-        | isSimpleExpr loop_var (Ast.AssignArray (_,Ast.Var i,Ast.Div (a,b))) = isSimpleArrayIndex loop_var a andalso isSimpleArrayIndex loop_var b andalso loop_var = i
-        | isSimpleExpr loop_var (Ast.AssignArray (_,Ast.Var i,Ast.Mult (a,b))) = isSimpleArrayIndex loop_var a andalso isSimpleArrayIndex loop_var b andalso loop_var = i
-        | isSimpleExpr _ _ = false
-
       (* uses vector operations on simple expressions *)
-      fun vectorizeRepeat unroll = let
-          fun getArgs (Ast.Plus (a,b)) = (a,b)
-            | getArgs (Ast.Minus (a,b)) = (a,b)
-            | getArgs (Ast.Div (a,b)) = (a,b)
-            | getArgs (Ast.Mult (a,b)) = (a,b)
-
-          fun vectorTranslate result ty var1 var2 (Ast.Plus _) = LLVM.Add (result,ty,LLVM.Variable var1,LLVM.Variable var2)
-            | vectorTranslate result ty var1 var2 (Ast.Minus _) = LLVM.Sub (result,ty,LLVM.Variable var1,LLVM.Variable var2)
-            | vectorTranslate result ty var1 var2 (Ast.Div _) = LLVM.Div (result,ty,LLVM.Variable var1,LLVM.Variable var2)
-            | vectorTranslate result ty var1 var2 (Ast.Mult _) = LLVM.Mul (result,ty,LLVM.Variable var1,LLVM.Variable var2)
-
+      fun vectorizeRepeat unroll loop_var = (case doexp of 
+          (* make sure it's just a single array assignment *)
+          Ast.AssignArray (exp_array,Ast.Var result_array_index,exp_do) =>
+          if result_array_index <> loop_var then NONE else
+          (let
+           
           (*if argument is an array indexed on the loop variable we can load directly from the array to the vector
             the argument must also be of a type that requires no casts
            *)
@@ -622,15 +590,63 @@ struct
               val (var_array,ty_array,code_array) = translate exp_array scope fscope
               val (var_result_ptr,ty_result_ptr,code_result_ptr) = calculateElemPtr var_array ty_array (LLVM.Variable loop_var)
               val var_vector_ptr = makenextvar ()
+              val (LLVM.vector (_,ty_vector_base)) = ty_vector
+              val ty_array_base = arrayBaseType ty_array
             in
-              code_array@code_result_ptr@[
-                  LLVM.Bitcast (var_vector_ptr,ty_result_ptr,LLVM.Variable var_result_ptr,LLVM.ptr ty_vector)
-                , LLVM.Load (var_result,LLVM.ptr ty_vector,LLVM.Variable var_vector_ptr)
-              ]
+              if ty_vector_base <> ty_array_base
+                then NONE
+                else
+                  SOME (code_array@code_result_ptr@[
+                      LLVM.Bitcast (var_vector_ptr,ty_result_ptr,LLVM.Variable var_result_ptr,LLVM.ptr ty_vector)
+                    , LLVM.Load (var_result,LLVM.ptr ty_vector,LLVM.Variable var_vector_ptr)
+                  ])
             end
 
-          val Ast.AssignArray (exp_array,Ast.Var loop_var,exp_do) = doexp
-          val (exp_a,exp_b) = getArgs exp_do
+          (* if the array is not indexed by the loop variable, we have to fill a vector with its value by hand *)
+          fun slowLoadArray exp_array ty_vector var_result = let
+              val (var_array_val,ty_val,code_array_val) = translate exp_array scope fscope
+              val (LLVM.vector (_,ty_vector_base)) = ty_vector
+            in
+              if ty_vector_base <> ty_val then NONE
+              else SOME (
+                    code_array_val
+                  @ (List.tabulate (unroll,
+                      (fn i => LLVM.InsertElement 
+                         ( var_result
+                         , ty_vector
+                         , if i=0 then LLVM.Undef else LLVM.Variable var_result
+                         , ty_vector_base
+                         , LLVM.Variable var_array_val
+                         , LLVM.Int i))
+                    ))
+                )
+            end
+
+          (* because all vectore operations we are doing are basically the same this is an op agnostic method that puts all the pieces together*)
+          fun vectorTranslateForOp result opcode ty exp_a exp_b  = let
+              val var_a = makenextvar ()
+              val var_b = makenextvar ()
+              val code_a = vectorTranslate var_a ty exp_a
+              val code_b = vectorTranslate var_b ty exp_b
+
+              val code = case (code_a,code_b) of
+                  (SOME code_a', SOME code_b') => 
+                    SOME (code_a'@code_b'@[ opcode (result,ty,LLVM.Variable var_a,LLVM.Variable var_b) ])
+                | _ => NONE
+            in
+              code
+            end
+
+          and vectorTranslate result ty (Ast.Plus (exp_a,exp_b)) = vectorTranslateForOp result LLVM.Add ty exp_a exp_b
+            | vectorTranslate result ty (Ast.Minus (exp_a,exp_b)) = vectorTranslateForOp result LLVM.Sub ty exp_a exp_b 
+            | vectorTranslate result ty (Ast.Div (exp_a,exp_b)) =  vectorTranslateForOp result LLVM.Div ty exp_a exp_b
+            | vectorTranslate result ty (Ast.Mult (exp_a,exp_b)) =  vectorTranslateForOp result LLVM.Mul ty exp_a exp_b
+            | vectorTranslate result ty (exp_array_index as (Ast.ArrayIndex (exp_array,Ast.Var array_index))) =
+                if array_index = loop_var
+                  (*then quickLoadArray loop_var exp_array ty result*)
+                  then slowLoadArray exp_array_index ty result
+                  else slowLoadArray exp_array_index ty result
+            | vectorTranslate _ _ _ = NONE
 
           (* get the pointer for where to store the result *)
           val (var_array,ty_array,code_array) = translate exp_array scope fscope
@@ -638,26 +654,41 @@ struct
           val var_vector_ptr = makenextvar ()
 
           val ty_vector = LLVM.vector (unroll,arrayBaseType ty_array)
-
-          val var_vector_a = makenextvar ()
-          val var_vector_b = makenextvar ()
           val var_vector_res = makenextvar ()
-
-          val code_insert =
-               (quickLoadArray loop_var exp_a ty_vector var_vector_a)
-              @(quickLoadArray loop_var exp_b ty_vector var_vector_b)
+          val do_code = vectorTranslate var_vector_res ty_vector exp_do
+          val insert_code = List.concat
+                    (List.tabulate (unroll,
+                      (fn i => 
+                          let
+                            val var_elem = makenextvar ()
+                            val var_ptr = makenextvar ()
+                            (*
+                            val (var_ptr,ty_ptr,code_ptr) = calculateElemPtr var_array ty_array (LLVM.Int loop_var)
+                            *)
+                          in
+                            [
+                                LLVM.GetElementPtr (var_ptr, LLVM.ptr (arrayBaseType ty_array), LLVM.Variable var_result_ptr, [LLVM.Int i])
+                              , LLVM.ExtractElement ( var_elem , ty_vector , LLVM.Variable var_vector_res, LLVM.Int i)
+                              , LLVM.Store (arrayBaseType ty_array, LLVM.Variable var_elem, LLVM.Variable var_ptr)
+                            ]
+                          end
+                      )
+                    ))
         in
-          code_array@code_result_ptr@code_insert@[
-              vectorTranslate var_vector_res ty_vector var_vector_a var_vector_b exp_do
-            , LLVM.Bitcast (var_vector_ptr,ty_result_ptr,LLVM.Variable var_result_ptr,LLVM.ptr ty_vector)
-            , LLVM.Store (ty_vector,LLVM.Variable var_vector_res,LLVM.Variable var_vector_ptr)
-            , LLVM.Add (loop_var,getTypeForVar scope loop_var,LLVM.Variable loop_var,LLVM.Int unroll) (*increment the loop counter*)
-          ]
+          case do_code of
+              SOME do_code' =>
+                SOME (code_array@code_result_ptr@do_code'@insert_code@[
+                  (*  LLVM.Bitcast (var_vector_ptr,ty_result_ptr,LLVM.Variable var_result_ptr,LLVM.ptr ty_vector)
+                  , LLVM.Store (ty_vector,LLVM.Variable var_vector_res,LLVM.Variable var_vector_ptr)
+                  , *)LLVM.Add (loop_var,getTypeForVar scope loop_var,LLVM.Variable loop_var,LLVM.Int unroll) (*increment the loop counter*)
+                ])
+           |  NONE => NONE
         (*and calculateElemPtr var_array ty_array arg_index = let*)
-        end
+        end)
+        | _ => NONE)
 
       (* simply interweaves do and step unroll times *)
-      fun naiveRepeat unroll = let
+      fun simpleRepeat unroll = let
             val (step_code,step_res,_) = evalArg scope fscope step_exp
             val (do_code,do_res,_) = evalArg scope fscope doexp
         in
@@ -672,10 +703,10 @@ struct
             val _ = ensureType LLVM.i1 [cond_ty]
             val loop_start_label = makenextlabel ()
 
-            val do_code = case (!config_vectorize,isSimpleExpr loop_var doexp) of
-                (false,_) => naiveRepeat unroll
-              | (_,false) => naiveRepeat unroll
-              | (_,true) => vectorizeRepeat unroll
+            val do_code = case (!config_vectorize,vectorizeRepeat unroll loop_var) of
+                (false,_) => simpleRepeat unroll
+              | (_,NONE) => simpleRepeat unroll
+              | (_,SOME code) => code
         in
             cond_code@[
               LLVM.CndBr(cond_res,LLVM.Label(loop_start_label),LLVM.Label(loop_end_label))

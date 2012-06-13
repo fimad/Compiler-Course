@@ -30,19 +30,22 @@ fun invoke lexstream = let
 (*parse the input*)
 val lexer = EvalParser.makeLexer (inputc TextIO.stdIn)
 val (result,lexer) = invoke lexer
+val cmd_args = CommandLine.arguments ()
 
 (*for parsing arguments *)
-fun shouldArg arg = List.foldr (fn (x,b) => (x = arg) orelse b) false (CommandLine.arguments ())
+fun shouldArg arg = List.foldr (fn (x,b) => (x = arg) orelse b) false (cmd_args)
 (*parses an argument and returns a maybe numeric argument*)
 fun shouldArgNum arg = List.foldr (fn (x,b) => 
-    let
-      val x_list = explode x
-      val num_str = implode (List.drop (x_list,length (explode arg)))
-      val num = Int.fromString num_str
-    in
-      if (not (isSome b) andalso String.isPrefix arg x) then num else b
-    end
-    ) NONE (CommandLine.arguments ())
+    if (not (isSome b) andalso String.isPrefix arg x) then
+      let
+        val x_list = explode x
+        val num_str = implode (List.drop (x_list,length (explode arg)))
+        val num = Int.fromString num_str
+      in
+        num
+      end
+    else b
+    ) NONE (cmd_args)
 
 (*should we do optimizations?*)
 val optimizeLevel = case shouldArgNum "-O" of (SOME i) => i | _ => 0

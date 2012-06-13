@@ -1,5 +1,4 @@
 =For Friday
-  -vectorize the unrolling
   -graphs
     -vector optimizations with loop unrolling
 

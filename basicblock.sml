@@ -173,6 +173,8 @@ struct
   fun def' bb = let
       fun op2def (code as (LLVM.Load (s,_,_))) = UseDefSet.singleton (s,code)
         | op2def (code as (LLVM.GetElementPtr (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.ExtractElement (s,_,_,_))) =  UseDefSet.singleton (s,code)
+        | op2def (code as (LLVM.InsertElement (s,_,_,_,_,_))) =  UseDefSet.singleton (s,code)
         | op2def (code as (LLVM.Add (s,_,_,_))) =  UseDefSet.singleton (s,code)
         | op2def (code as (LLVM.Sub (s,_,_,_))) =  UseDefSet.singleton (s,code)
         | op2def (code as (LLVM.Mul (s,_,_,_))) =  UseDefSet.singleton (s,code)
@@ -209,6 +211,8 @@ struct
         | arg2use _ _ = UseDefSet.empty
       fun op2use (code as (LLVM.Load (_,_,a))) = arg2use code a
         | op2use (code as (LLVM.GetElementPtr (_,_,a1,args))) = UseDefSet.union ((arg2use code a1),(useDefUnionFold (map (arg2use code) args)))
+        | op2use (code as (LLVM.ExtractElement (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
+        | op2use (code as (LLVM.InsertElement (_,_,a1,_,a2,a3))) = useDefUnionFold [(arg2use code a1),(arg2use code a2),(arg2use code a3)]
         | op2use (code as (LLVM.Store (_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
         | op2use (code as (LLVM.Add (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))
         | op2use (code as (LLVM.Sub (_,_,a1,a2))) = UseDefSet.union ((arg2use code a1),(arg2use code a2))

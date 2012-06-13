@@ -258,6 +258,8 @@ fun renameVariables bbg = let
                       case line of
                           (LLVM.Load (r,t,a1)) => LLVM.Load ((change_result r),t,(change_arg a1))
                         | (LLVM.GetElementPtr (r,t,a1,args)) => LLVM.GetElementPtr ((change_result r),t,(change_arg a1),(map change_arg args))
+                        | (LLVM.InsertElement (r,t1,a1,t2,a2,a3)) => LLVM.InsertElement ((change_result r),t1,(change_arg a1),t2,(change_arg a2),a3)
+                        | (LLVM.ExtractElement(r,t,a1,a2)) => LLVM.ExtractElement ((change_result r),t,(change_arg a1),(change_arg a2))
                         | (LLVM.Store (t,a1,a2)) => LLVM.Store (t,(change_arg a1),(change_arg a2))
                         | (LLVM.Add (r,t,a1,a2)) => LLVM.Add ((change_result r),t,(change_arg a1),(change_arg a2))
                         | (LLVM.Sub (r,t,a1,a2)) => LLVM.Sub ((change_result r),t,(change_arg a1),(change_arg a2))

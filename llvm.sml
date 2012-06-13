@@ -22,6 +22,7 @@ struct
     | Float of real
     | Variable of string
     | Label of string
+    | Undef
   datatype OP = 
     DefnLabel of string
     | ZExt of Result*Type*Arg*Type
@@ -162,6 +163,7 @@ struct
     | printArg (Bool _) = "1"
     | printArg (Variable v) = concat ["%",v]
     | printArg (Label v) = concat ["label %",v]
+    | printArg (Undef) = "undef"
 
 (* Helpers for printing various types of opcodes *)
   val combArgs = foldl (
@@ -268,8 +270,8 @@ struct
     | printOP (Load (res,ty,arg)) =  h_printROP res "load" ty [arg]
     (*| printOP (GetElementPtr (res,ty1,a1,a2)) = concat ["%",res," = getelementptr inbounds ",(printType ty1)," ",(printArg a1),", i32 0",", i32 ",(printArg a2)]*)
     | printOP (GetElementPtr (res,ty,a1,args)) = concat ["%",res," = getelementptr ",(printType ty)," ",(printArg a1),concat (map (fn a=>concat[", i32 ",printArg a]) args)]
-    | printOP (ExtractElement (res,ty,a1,a2)) = concat ["%",res," = extractelement ",(printType ty)," ",(printArg a1),", i32", printArg a2]
-    | printOP (InsertElement (res,ty1,a1,ty2,a2,a3)) = concat ["%",res," = insertelement ",(printType ty1)," ",(printArg a1),printType ty2," ",printArg a2,", i32", printArg a3]
+    | printOP (ExtractElement (res,ty,a1,a2)) = concat ["%",res," = extractelement ",(printType ty)," ",(printArg a1),", i32 ", printArg a2]
+    | printOP (InsertElement (res,ty1,a1,ty2,a2,a3)) = concat ["%",res," = insertelement ",(printType ty1)," ",(printArg a1),", ",printType ty2," ",printArg a2,", i32 ", printArg a3]
     | printOP (Store (ty,a1,a2)) =  concat [(h_printOP "store" ty [a1]),", ",(printType ty),"* ",(printArg a2)]
     | printOP (Add (res,float,a1,a2)) =  h_printROP res "fadd" float [a1, a2]
     | printOP (Add (res,v as vector (_,float),a1,a2)) =  h_printROP res "fadd" v [a1, a2]
